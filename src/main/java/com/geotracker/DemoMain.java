@@ -5,6 +5,7 @@ import com.geotracker.index.CowQuadtree;
 import com.geotracker.index.HamtIndex;
 import com.geotracker.index.IndexerThread;
 import com.geotracker.ingestion.IngestionServer;
+import com.geotracker.ingestion.NettyIngestionServer;
 import com.geotracker.ingestion.ShardRouter;
 import com.geotracker.model.BoundingBox;
 import com.geotracker.routing.RoadGraph;
@@ -40,16 +41,34 @@ public class DemoMain {
             indexers[i].start();
         }
 
-        IngestionServer server = new IngestionServer(Config.PORT, shardRouter);
-        Thread serverThread = new Thread(() -> {
-            try {
-                server.start();
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        });
-        serverThread.start();
+        boolean useNetty = true;
+        for (String arg : args) {
+            if (arg.equals("--plain")) useNetty = false;
+        }
 
+        final NettyIngestionServer nettyServer;
+        final IngestionServer plainServer;
+        if (useNetty) {
+            nettyServer = new NettyIngestionServer(Config.PORT, shardRouter);
+            plainServer = null;
+            new Thread(() -> {
+                try {
+                    nettyServer.start();
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }).start();
+        } else {
+            nettyServer = null;
+            plainServer = new IngestionServer(Config.PORT, shardRouter);
+            new Thread(() -> {
+                try {
+                    plainServer.start();
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }).start();
+        }
         Thread.sleep(200);
 
         SwingDashboard dashboard = new SwingDashboard(quadtrees[0], hamts[0], bounds);
@@ -116,7 +135,8 @@ public class DemoMain {
             dashboard.stop();
             geofenceEngine.shutdown();
             if (clientHolder[0] != null) clientHolder[0].close();
-            server.stop();
+            if (nettyServer != null) nettyServer.stop();
+            if (plainServer != null) plainServer.stop();
             for (IndexerThread indexer : indexers) {
                 indexer.shutdown();
             }
