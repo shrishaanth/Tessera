@@ -7,7 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class CowQuadtree implements SpatialIndex {
-    private static final int MAX_CAPACITY = 4;
+    private static final int MAX_CAPACITY = 32;
     private static final int MAX_DEPTH = 20;
 
     private volatile QuadTreeNode publishedRoot;
@@ -88,6 +88,16 @@ public class CowQuadtree implements SpatialIndex {
     private QuadTreeNode insert(QuadTreeNode node, long vehicleId, double x, double y, int depth) {
         if (node instanceof QuadTreeNode.Leaf leaf) {
             if (leaf.size() < MAX_CAPACITY || depth >= MAX_DEPTH) {
+                return leaf.add(vehicleId, x, y);
+            }
+            boolean allSameCoords = true;
+            for (int i = 0; i < leaf.size(); i++) {
+                if (leaf.xs()[i] != x || leaf.ys()[i] != y) {
+                    allSameCoords = false;
+                    break;
+                }
+            }
+            if (allSameCoords) {
                 return leaf.add(vehicleId, x, y);
             }
             QuadTreeNode branch = split(leaf);

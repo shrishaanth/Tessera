@@ -7,7 +7,7 @@ public sealed interface QuadTreeNode {
 
     record Leaf(BoundingBox bounds, long[] vehicleIds, double[] xs, double[] ys, int size) implements QuadTreeNode {
         public static Leaf empty(BoundingBox bounds) {
-            return new Leaf(bounds, new long[4], new double[4], new double[4], 0);
+            return new Leaf(bounds, new long[32], new double[32], new double[32], 0);
         }
 
         public Leaf add(long vehicleId, double x, double y) {
@@ -26,7 +26,7 @@ public sealed interface QuadTreeNode {
         public Leaf remove(long vehicleId, double x, double y) {
             int idx = -1;
             for (int i = 0; i < size; i++) {
-                if (vehicleIds[i] == vehicleId && xs[i] == x && ys[i] == y) {
+                if (vehicleIds[i] == vehicleId) {
                     idx = i;
                     break;
                 }
@@ -37,14 +37,15 @@ public sealed interface QuadTreeNode {
             if (size == 1) {
                 return empty(bounds);
             }
-            long[] newIds = java.util.Arrays.copyOf(vehicleIds, size - 1);
-            double[] newXs = java.util.Arrays.copyOf(xs, size - 1);
-            double[] newYs = java.util.Arrays.copyOf(ys, size - 1);
-            if (idx != size - 1) {
-                newIds[idx] = vehicleIds[size - 1];
-                newXs[idx] = xs[size - 1];
-                newYs[idx] = ys[size - 1];
-            }
+            long[] newIds = new long[vehicleIds.length];
+            double[] newXs = new double[xs.length];
+            double[] newYs = new double[ys.length];
+            System.arraycopy(vehicleIds, 0, newIds, 0, idx);
+            System.arraycopy(xs, 0, newXs, 0, idx);
+            System.arraycopy(ys, 0, newYs, 0, idx);
+            System.arraycopy(vehicleIds, idx + 1, newIds, idx, size - idx - 1);
+            System.arraycopy(xs, idx + 1, newXs, idx, size - idx - 1);
+            System.arraycopy(ys, idx + 1, newYs, idx, size - idx - 1);
             return new Leaf(bounds, newIds, newXs, newYs, size - 1);
         }
     }
