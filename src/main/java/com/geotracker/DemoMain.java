@@ -71,9 +71,6 @@ public class DemoMain {
         }
         Thread.sleep(200);
 
-        SwingDashboard dashboard = new SwingDashboard(quadtrees[0], hamts[0], bounds);
-        dashboard.setVisible(true);
-
         RoadGraph graph = RoadGraph.builder()
                 .addGrid(20, 20, 50.0)
                 .build();
@@ -93,6 +90,10 @@ public class DemoMain {
                         new Position(800, 900, 0)
                 ), new BoundingBox(800, 800, 900, 900))
         );
+
+        SwingDashboard dashboard = new SwingDashboard(quadtrees[0], hamts[0], bounds);
+        dashboard.setZones(zones);
+        dashboard.setVisible(true);
         GeofenceEngine geofenceEngine = new GeofenceEngine(quadtrees[0], hamts[0], zones);
 
         SimulatorClient[] clientHolder = new SimulatorClient[1];

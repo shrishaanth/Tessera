@@ -1,17 +1,19 @@
 package com.geotracker.dashboard;
 
+import com.geotracker.geofence.GeofenceEngine;
 import com.geotracker.index.CowQuadtree;
 import com.geotracker.index.HamtIndex;
 import com.geotracker.model.BoundingBox;
 import com.geotracker.model.NearestResult;
 import com.geotracker.model.Position;
+import com.geotracker.model.RouteResult;
 
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.util.ArrayList;
 import java.util.List;
 
 public class SwingDashboard extends JFrame {
@@ -23,11 +25,13 @@ public class SwingDashboard extends JFrame {
     private volatile long frameCount = 0;
     private volatile long lastFpsTime = System.currentTimeMillis();
     private volatile int fps = 0;
-    private volatile long totalUpdates = 0;
     private volatile double viewportScale = 1.0;
     private volatile double viewportCenterX = 500.0;
     private volatile double viewportCenterY = 500.0;
     private volatile boolean running = true;
+
+    private volatile List<GeofenceEngine.Zone> zones = new ArrayList<>();
+    private volatile List<RouteResult> activeRoutes = new ArrayList<>();
 
     public SwingDashboard(CowQuadtree quadtree, HamtIndex hamt, BoundingBox mapBounds) {
         this.quadtree = quadtree;
@@ -43,6 +47,14 @@ public class SwingDashboard extends JFrame {
         this.statsLabel = new JLabel("Initializing...");
         initUI();
         startRenderLoop();
+    }
+
+    public void setZones(List<GeofenceEngine.Zone> zones) {
+        this.zones = new ArrayList<>(zones);
+    }
+
+    public void setActiveRoutes(List<RouteResult> routes) {
+        this.activeRoutes = new ArrayList<>(routes);
     }
 
     private void initUI() {
@@ -107,6 +119,35 @@ public class SwingDashboard extends JFrame {
         g.setColor(new Color(60, 60, 60));
         g.drawRect(0, 0, width - 1, height - 1);
 
+        for (GeofenceEngine.Zone zone : zones) {
+            if (!zone.bbox().intersects(viewport)) continue;
+            g.setColor(new Color(255, 255, 0, 40));
+            Polygon poly = new Polygon();
+            for (Position p : zone.polygon()) {
+                int sx = (int) ((p.x() - minX) * viewportScale);
+                int sy = (int) ((p.y() - minY) * viewportScale);
+                poly.addPoint(sx, sy);
+            }
+            g.fillPolygon(poly);
+            g.setColor(new Color(255, 255, 0));
+            g.drawPolygon(poly);
+        }
+
+        for (RouteResult route : activeRoutes) {
+            if (route.nodeIds().isEmpty()) continue;
+            g.setColor(new Color(0, 255, 0));
+            for (int i = 0; i < route.nodeIds().size() - 1; i++) {
+                Position a = hamt.get(route.nodeIds().get(i));
+                Position b = hamt.get(route.nodeIds().get(i + 1));
+                if (a == null || b == null) continue;
+                int ax = (int) ((a.x() - minX) * viewportScale);
+                int ay = (int) ((a.y() - minY) * viewportScale);
+                int bx = (int) ((b.x() - minX) * viewportScale);
+                int by = (int) ((b.y() - minY) * viewportScale);
+                g.drawLine(ax, ay, bx, by);
+            }
+        }
+
         for (long vehicleId : vehicleIds) {
             Position pos = hamt.get(vehicleId);
             if (pos == null) continue;
@@ -151,10 +192,6 @@ public class SwingDashboard extends JFrame {
                     "Vehicle " + nearest.vehicleId() + "\nPosition: (" + nearest.x() + ", " + nearest.y() + ")\nDistance: " + String.format("%.2f", nearest.distance()),
                     "Vehicle Info", JOptionPane.INFORMATION_MESSAGE);
         }
-    }
-
-    public void setTotalUpdates(long totalUpdates) {
-        this.totalUpdates = totalUpdates;
     }
 
     public void stop() {

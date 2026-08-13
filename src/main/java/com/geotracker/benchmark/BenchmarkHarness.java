@@ -54,6 +54,25 @@ public class BenchmarkHarness {
         }
         System.out.println();
         System.out.println("Results saved to " + csvPath);
+
+        generateChart(results);
+    }
+
+    private static void generateChart(List<BenchmarkResult> results) {
+        String chartPath = "benchmark-chart.txt";
+        try (PrintWriter pw = new PrintWriter(new FileWriter(chartPath))) {
+            pw.println("Throughput Comparison (ops/sec)");
+            pw.println("=================================");
+            double maxThroughput = results.stream().mapToDouble(r -> r.throughput()).max().orElse(1);
+            for (BenchmarkResult r : results) {
+                int barLength = (int) (40 * r.throughput() / maxThroughput);
+                String bar = "=".repeat(Math.max(0, barLength));
+                pw.printf("%-15s | %s %10.0f ops/sec%n", r.name(), bar, r.throughput());
+            }
+        } catch (IOException e) {
+            System.err.println("Failed to write chart: " + e.getMessage());
+        }
+        System.out.println("Chart saved to " + chartPath);
     }
 
     private static BenchmarkResult benchmark(String name, java.util.function.Supplier<SpatialIndex> factory, int vehicleCount, int operations) {
