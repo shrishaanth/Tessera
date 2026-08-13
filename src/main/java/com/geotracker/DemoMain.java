@@ -12,6 +12,14 @@ import com.geotracker.simulator.SimulatorClient;
 import com.geotracker.simulator.VehicleSimulator;
 import com.geotracker.util.Config;
 
+import com.geotracker.geofence.GeofenceEngine;
+import com.geotracker.geofence.GeofenceEngine.Zone;
+import com.geotracker.model.Position;
+import com.geotracker.routing.AStarRouter;
+import com.geotracker.routing.RoadGraph;
+
+import java.util.List;
+
 public class DemoMain {
     public static void main(String[] args) throws Exception {
         int shards = 2;
@@ -47,11 +55,29 @@ public class DemoMain {
         SwingDashboard dashboard = new SwingDashboard(quadtrees[0], hamts[0], bounds);
         dashboard.setVisible(true);
 
+        RoadGraph graph = RoadGraph.builder()
+                .addGrid(20, 20, 50.0)
+                .build();
+        AStarRouter router = new AStarRouter(graph);
+
+        List<Zone> zones = List.of(
+                new Zone("center", List.of(
+                        new Position(400, 400, 0),
+                        new Position(600, 400, 0),
+                        new Position(600, 600, 0),
+                        new Position(400, 600, 0)
+                ), new BoundingBox(400, 400, 600, 600)),
+                new Zone("airport", List.of(
+                        new Position(800, 800, 0),
+                        new Position(900, 800, 0),
+                        new Position(900, 900, 0),
+                        new Position(800, 900, 0)
+                ), new BoundingBox(800, 800, 900, 900))
+        );
+        GeofenceEngine geofenceEngine = new GeofenceEngine(quadtrees[0], hamts[0], zones);
+
         SimulatorClient[] clientHolder = new SimulatorClient[1];
         if (runSimulator) {
-            RoadGraph graph = RoadGraph.builder()
-                    .addGrid(20, 20, 50.0)
-                    .build();
             VehicleSimulator simulator = new VehicleSimulator(graph, vehicleCount, 200.0, 0.05, Config.SEED);
             SimulatorClient client = new SimulatorClient("localhost", Config.PORT);
             client.connect();
@@ -70,9 +96,25 @@ public class DemoMain {
             }).start();
         }
 
+        Thread geofenceThread = new Thread(() -> {
+            while (true) {
+                try {
+                    var events = geofenceEngine.check();
+                    for (var event : events) {
+                        System.out.println("ALERT: Vehicle " + event.vehicleId() + " " + event.type() + " zone " + event.zoneId());
+                    }
+                    Thread.sleep(500);
+                } catch (Exception e) {
+                    break;
+                }
+            }
+        });
+        geofenceThread.start();
+
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             System.out.println("Shutting down...");
             dashboard.stop();
+            geofenceEngine.shutdown();
             if (clientHolder[0] != null) clientHolder[0].close();
             server.stop();
             for (IndexerThread indexer : indexers) {
