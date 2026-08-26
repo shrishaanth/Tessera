@@ -28,16 +28,6 @@ mvn clean compile
 
 ## Run
 
-### Server
-```bash
-java -cp target/classes:lib/netty-*.jar com.geotracker.ServerMain
-```
-
-### Simulator
-```bash
-java -cp target/classes:lib/netty-*.jar com.geotracker.SimulatorMain
-```
-
 ### Full Demo (server + simulator + dashboard)
 ```bash
 java -cp target/classes:lib/netty-*.jar com.geotracker.DemoMain

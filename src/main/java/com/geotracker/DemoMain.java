@@ -24,7 +24,7 @@ import java.util.List;
 public class DemoMain {
     public static void main(String[] args) throws Exception {
         int shards = Config.SHARDS;
-        int vehicleCount = Config.VEHICLE_COUNT;
+        int vehicleCount = Config.DEMO_VEHICLE_COUNT;
         boolean runSimulator = true;
 
         BoundingBox bounds = new BoundingBox(Config.MAP_MIN_X, Config.MAP_MIN_Y, Config.MAP_MAX_X, Config.MAP_MAX_Y);

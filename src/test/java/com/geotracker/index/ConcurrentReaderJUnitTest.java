@@ -1,6 +1,8 @@
 package com.geotracker.index;
 
 import com.geotracker.model.BoundingBox;
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -9,8 +11,10 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 
-public class ConcurrentReaderTest {
-    public static void main(String[] args) throws Exception {
+public class ConcurrentReaderJUnitTest {
+
+    @Test
+    void concurrentReadersDoNotCorrupt() throws Exception {
         int readerThreads = 16;
         int iterations = 1000;
         BoundingBox bounds = new BoundingBox(0, 0, 1000, 1000);
@@ -24,10 +28,9 @@ public class ConcurrentReaderTest {
         ExecutorService executor = Executors.newFixedThreadPool(readerThreads);
         CountDownLatch latch = new CountDownLatch(readerThreads);
         AtomicInteger errors = new AtomicInteger(0);
-        List<Thread> threads = new ArrayList<>();
 
         for (int t = 0; t < readerThreads; t++) {
-            Thread thread = new Thread(() -> {
+            executor.submit(() -> {
                 try {
                     for (int i = 0; i < iterations; i++) {
                         double cx = Math.random() * 900;
@@ -44,18 +47,10 @@ public class ConcurrentReaderTest {
                     latch.countDown();
                 }
             });
-            threads.add(thread);
-            thread.start();
         }
 
         latch.await();
         executor.shutdown();
-
-        if (errors.get() == 0) {
-            System.out.println("PASS: ConcurrentReaderTest - " + readerThreads + " readers completed without errors");
-        } else {
-            System.out.println("FAIL: ConcurrentReaderTest - " + errors.get() + " errors encountered");
-            System.exit(1);
-        }
+        assertEquals(0, errors.get(), "Concurrent readers encountered errors");
     }
 }

@@ -64,4 +64,15 @@ public class HamtIndexJUnitTest {
         }
         assertEquals(100, hamt.size());
     }
+
+    @Test
+    void putInLeafOverwriteDoesNotDuplicate() {
+        HamtIndex hamt = new HamtIndex();
+        long key = 42;
+        hamt.put(key, new Position(1, 1, 1));
+        hamt.put(key, new Position(2, 2, 2));
+        hamt.put(key, new Position(3, 3, 3));
+        assertEquals(new Position(3, 3, 3), hamt.get(key));
+        assertEquals(1, hamt.size());
+    }
 }
