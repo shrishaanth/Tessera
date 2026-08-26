@@ -14,13 +14,15 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class BenchmarkHarness {
     public record BenchmarkResult(String name, double throughput, double p50, double p95, double p99, double mean) {}
 
     public static void main(String[] args) throws Exception {
-        int vehicleCount = 1000;
+        int vehicleCount = Config.VEHICLE_COUNT;
         int operations = 10000;
         BoundingBox bounds = new BoundingBox(Config.MAP_MIN_X, Config.MAP_MIN_Y, Config.MAP_MAX_X, Config.MAP_MAX_Y);
 
@@ -78,12 +80,14 @@ public class BenchmarkHarness {
     private static BenchmarkResult benchmark(String name, java.util.function.Supplier<SpatialIndex> factory, int vehicleCount, int operations) {
         SpatialIndex index = factory.get();
         HamtIndex hamt = new HamtIndex();
+        Map<Long, Position> positions = new HashMap<>();
 
         for (int i = 0; i < vehicleCount; i++) {
             double x = Math.random() * 1000;
             double y = Math.random() * 1000;
             index.insert(i, x, y);
             hamt.put(i, new Position(x, y, System.currentTimeMillis()));
+            positions.put((long) i, new Position(x, y, System.currentTimeMillis()));
         }
 
         LatencyRecorder insertRecorder = new LatencyRecorder();
@@ -93,16 +97,17 @@ public class BenchmarkHarness {
 
         for (int i = 0; i < operations; i++) {
             long vehicleId = i % vehicleCount;
-            double oldX = Math.random() * 1000;
-            double oldY = Math.random() * 1000;
+            Position oldPos = positions.get(vehicleId);
             double newX = Math.random() * 1000;
             double newY = Math.random() * 1000;
 
             long t0 = System.nanoTime();
-            index.update(vehicleId, oldX, oldY, newX, newY);
+            index.update(vehicleId, oldPos.x(), oldPos.y(), newX, newY);
             insertRecorder.record(System.nanoTime() - t0);
 
-            hamt.put(vehicleId, new Position(newX, newY, System.currentTimeMillis()));
+            Position newPos = new Position(newX, newY, System.currentTimeMillis());
+            hamt.put(vehicleId, newPos);
+            positions.put(vehicleId, newPos);
 
             t0 = System.nanoTime();
             index.rangeQuery(new BoundingBox(newX - 10, newY - 10, newX + 10, newY + 10));

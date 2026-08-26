@@ -19,7 +19,9 @@ import com.geotracker.model.Position;
 import com.geotracker.routing.AStarRouter;
 import com.geotracker.routing.RoadGraph;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
 
 public class DemoMain {
     public static void main(String[] args) throws Exception {
@@ -146,7 +148,7 @@ public class DemoMain {
 
         SimulatorClient[] clientHolder = new SimulatorClient[1];
         if (runSimulator) {
-            VehicleSimulator simulator = new VehicleSimulator(graph, vehicleCount, 200.0, 0.05, Config.SEED);
+            VehicleSimulator simulator = new VehicleSimulator(graph, vehicleCount, 200.0, 1.0 / Config.UPDATE_RATE_HZ, Config.SEED);
             SimulatorClient client = new SimulatorClient("localhost", Config.PORT);
             client.connect();
             clientHolder[0] = client;
@@ -156,7 +158,7 @@ public class DemoMain {
                     try {
                         var updates = simulator.tick();
                         client.sendBatch(updates);
-                        Thread.sleep(50);
+                        Thread.sleep((long)(1000.0 / Config.UPDATE_RATE_HZ));
                     } catch (Exception e) {
                         e.printStackTrace();
                         break;
@@ -180,6 +182,28 @@ public class DemoMain {
             }
         });
         geofenceThread.start();
+
+        Thread routeThread = new Thread(() -> {
+            java.util.Random random = new java.util.Random(Config.SEED);
+            while (true) {
+                try {
+                    var nodes = new ArrayList<>(graph.getAllNodes());
+                    if (nodes.size() >= 2) {
+                        var from = nodes.get(random.nextInt(nodes.size()));
+                        var to = nodes.get(random.nextInt(nodes.size()));
+                        var route = router.findRoute(0, from.id(), to.id());
+                        if (!route.nodeIds().isEmpty() && route.nodeIds().size() > 1) {
+                            dashboard.setActiveRoutes(List.of(route));
+                        }
+                    }
+                    Thread.sleep(5000);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    break;
+                }
+            }
+        });
+        routeThread.start();
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             System.out.println("Shutting down...");

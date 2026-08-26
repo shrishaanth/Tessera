@@ -11,8 +11,15 @@ import com.geotracker.routing.RoadGraph;
 import com.geotracker.simulator.VehicleSimulator;
 import com.geotracker.util.Config;
 
-public class IntegrationTest {
-    public static void main(String[] args) throws Exception {
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
+
+import java.util.List;
+
+public class IntegrationJUnitTest {
+
+    @Test
+    void allVehiclesIndexedAcrossShards() throws Exception {
         int shards = 2;
         int vehicleCount = 100;
         BoundingBox bounds = new BoundingBox(Config.MAP_MIN_X, Config.MAP_MIN_Y, Config.MAP_MAX_X, Config.MAP_MAX_Y);
@@ -35,8 +42,6 @@ public class IntegrationTest {
 
         VehicleSimulator simulator = new VehicleSimulator(graph, vehicleCount, 50.0, 0.1, Config.SEED);
 
-        System.out.println("Running integration test: " + vehicleCount + " vehicles, " + shards + " shards");
-
         for (int tick = 0; tick < 10; tick++) {
             var updates = simulator.tick();
             for (PositionUpdate update : updates) {
@@ -51,15 +56,10 @@ public class IntegrationTest {
         for (int i = 0; i < shards; i++) {
             var points = quadtrees[i].rangeQuery(bounds);
             totalPoints += points.size();
-            System.out.println("Shard " + i + ": " + points.size() + " points in quadtree");
         }
 
-        System.out.println("Total points across all shards: " + totalPoints);
-        if (totalPoints == vehicleCount) {
-            System.out.println("PASS: Integration test - all vehicles indexed");
-        } else {
-            System.out.println("FAIL: Expected " + vehicleCount + " vehicles, got " + totalPoints);
-        }
+        assertEquals(vehicleCount, totalPoints,
+                "Expected " + vehicleCount + " vehicles, got " + totalPoints);
 
         for (int i = 0; i < shards; i++) {
             indexers[i].shutdown();

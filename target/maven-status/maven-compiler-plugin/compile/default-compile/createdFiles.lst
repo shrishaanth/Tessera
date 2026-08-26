@@ -14,7 +14,6 @@ com\geotracker\routing\RoadGraph$Edge.class
 com\geotracker\SimulatorMain.class
 com\geotracker\util\RingBuffer.class
 com\geotracker\index\HamtIndex.class
-com\geotracker\IntegrationTest.class
 com\geotracker\dashboard\ConsoleDashboard.class
 com\geotracker\ingestion\PositionDecoder.class
 com\geotracker\index\NaiveIndex.class
@@ -27,7 +26,6 @@ com\geotracker\routing\AStarRouter$NodeEntry.class
 com\geotracker\index\QuadTreeNode.class
 com\geotracker\model\BoundingBox.class
 com\geotracker\index\HamtIndex$BranchNode.class
-com\geotracker\NetworkIntegrationTest.class
 com\geotracker\simulator\SimulatedVehicle.class
 com\geotracker\dashboard\Dashboard.class
 com\geotracker\DemoMain.class

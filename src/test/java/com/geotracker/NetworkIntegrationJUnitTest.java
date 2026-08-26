@@ -6,15 +6,23 @@ import com.geotracker.index.IndexerThread;
 import com.geotracker.ingestion.IngestionServer;
 import com.geotracker.ingestion.ShardRouter;
 import com.geotracker.model.BoundingBox;
+import com.geotracker.model.Position;
+import com.geotracker.model.PositionUpdate;
 import com.geotracker.routing.RoadGraph;
 import com.geotracker.simulator.SimulatorClient;
 import com.geotracker.simulator.VehicleSimulator;
 import com.geotracker.util.Config;
 
-import java.io.IOException;
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
 
-public class NetworkIntegrationTest {
-    public static void main(String[] args) throws Exception {
+import java.io.IOException;
+import java.util.List;
+
+public class NetworkIntegrationJUnitTest {
+
+    @Test
+    void networkPipelineIndexesAllVehicles() throws Exception {
         int port = 19099;
         int shards = 2;
         int vehicleCount = 50;
@@ -37,7 +45,7 @@ public class NetworkIntegrationTest {
             try {
                 server.start();
             } catch (IOException e) {
-                e.printStackTrace();
+                throw new RuntimeException(e);
             }
         });
         serverThread.start();
@@ -51,8 +59,6 @@ public class NetworkIntegrationTest {
         VehicleSimulator simulator = new VehicleSimulator(graph, vehicleCount, 200.0, 0.1, Config.SEED);
         SimulatorClient client = new SimulatorClient("localhost", port);
         client.connect();
-
-        System.out.println("Running network integration test: " + vehicleCount + " vehicles");
 
         for (int tick = 0; tick < 5; tick++) {
             var updates = simulator.tick();
@@ -69,12 +75,8 @@ public class NetworkIntegrationTest {
             totalPoints += points.size();
         }
 
-        System.out.println("Total points across all shards: " + totalPoints);
-        if (totalPoints == vehicleCount) {
-            System.out.println("PASS: Network integration test - all vehicles indexed");
-        } else {
-            System.out.println("FAIL: Expected " + vehicleCount + " vehicles, got " + totalPoints);
-        }
+        assertEquals(vehicleCount, totalPoints,
+                "Expected " + vehicleCount + " vehicles, got " + totalPoints);
 
         server.stop();
         for (IndexerThread indexer : indexers) {
