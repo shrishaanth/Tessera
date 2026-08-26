@@ -17,8 +17,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class SwingDashboard extends JFrame {
-    private final CowQuadtree quadtree;
-    private final HamtIndex hamt;
+    private final CowQuadtree[] quadtrees;
+    private final HamtIndex[] hamts;
     private final BoundingBox mapBounds;
     private final JPanel canvasPanel;
     private final JLabel statsLabel;
@@ -33,9 +33,9 @@ public class SwingDashboard extends JFrame {
     private volatile List<GeofenceEngine.Zone> zones = new ArrayList<>();
     private volatile List<RouteResult> activeRoutes = new ArrayList<>();
 
-    public SwingDashboard(CowQuadtree quadtree, HamtIndex hamt, BoundingBox mapBounds) {
-        this.quadtree = quadtree;
-        this.hamt = hamt;
+    public SwingDashboard(CowQuadtree[] quadtrees, HamtIndex[] hamts, BoundingBox mapBounds) {
+        this.quadtrees = quadtrees;
+        this.hamts = hamts;
         this.mapBounds = mapBounds;
         this.canvasPanel = new JPanel() {
             @Override
@@ -114,7 +114,10 @@ public class SwingDashboard extends JFrame {
         double maxY = viewportCenterY + halfHeight;
 
         BoundingBox viewport = new BoundingBox(minX, minY, maxX, maxY);
-        List<Long> vehicleIds = quadtree.rangeQuery(viewport);
+        List<Long> vehicleIds = new ArrayList<>();
+        for (CowQuadtree qt : quadtrees) {
+            vehicleIds.addAll(qt.rangeQuery(viewport));
+        }
 
         g.setColor(new Color(60, 60, 60));
         g.drawRect(0, 0, width - 1, height - 1);
@@ -137,8 +140,16 @@ public class SwingDashboard extends JFrame {
             if (route.nodeIds().isEmpty()) continue;
             g.setColor(new Color(0, 255, 0));
             for (int i = 0; i < route.nodeIds().size() - 1; i++) {
-                Position a = hamt.get(route.nodeIds().get(i));
-                Position b = hamt.get(route.nodeIds().get(i + 1));
+                Position a = null;
+                Position b = null;
+                for (HamtIndex h : hamts) {
+                    a = h.get(route.nodeIds().get(i));
+                    if (a != null) break;
+                }
+                for (HamtIndex h : hamts) {
+                    b = h.get(route.nodeIds().get(i + 1));
+                    if (b != null) break;
+                }
                 if (a == null || b == null) continue;
                 int ax = (int) ((a.x() - minX) * viewportScale);
                 int ay = (int) ((a.y() - minY) * viewportScale);
@@ -149,7 +160,11 @@ public class SwingDashboard extends JFrame {
         }
 
         for (long vehicleId : vehicleIds) {
-            Position pos = hamt.get(vehicleId);
+            Position pos = null;
+            for (HamtIndex h : hamts) {
+                pos = h.get(vehicleId);
+                if (pos != null) break;
+            }
             if (pos == null) continue;
 
             int screenX = (int) ((pos.x() - minX) * viewportScale);
@@ -171,8 +186,12 @@ public class SwingDashboard extends JFrame {
             frameCount = 0;
             lastFpsTime = now;
         }
+        int totalVehicles = 0;
+        for (HamtIndex h : hamts) {
+            totalVehicles += h.size();
+        }
         statsLabel.setText(String.format("FPS: %d | Vehicles: %d | Scale: %.2f | Center: (%.0f, %.0f)",
-                fps, quadtree.rangeQuery(mapBounds).size(), viewportScale, viewportCenterX, viewportCenterY));
+                fps, totalVehicles, viewportScale, viewportCenterX, viewportCenterY));
     }
 
     private void handleClick(int screenX, int screenY) {
@@ -186,10 +205,16 @@ public class SwingDashboard extends JFrame {
         double clickX = minX + screenX / viewportScale;
         double clickY = minY + screenY / viewportScale;
 
-        NearestResult nearest = quadtree.nearest(clickX, clickY);
-        if (nearest != null && nearest.distance() < 50.0 / viewportScale) {
+        NearestResult best = null;
+        for (CowQuadtree qt : quadtrees) {
+            NearestResult candidate = qt.nearest(clickX, clickY);
+            if (candidate != null && (best == null || candidate.distance() < best.distance())) {
+                best = candidate;
+            }
+        }
+        if (best != null && best.distance() < 50.0 / viewportScale) {
             JOptionPane.showMessageDialog(this,
-                    "Vehicle " + nearest.vehicleId() + "\nPosition: (" + nearest.x() + ", " + nearest.y() + ")\nDistance: " + String.format("%.2f", nearest.distance()),
+                    "Vehicle " + best.vehicleId() + "\nPosition: (" + best.x() + ", " + best.y() + ")\nDistance: " + String.format("%.2f", best.distance()),
                     "Vehicle Info", JOptionPane.INFORMATION_MESSAGE);
         }
     }

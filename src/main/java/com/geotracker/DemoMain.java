@@ -91,7 +91,7 @@ public class DemoMain {
                 ), new BoundingBox(800, 800, 900, 900))
         );
 
-        SwingDashboard dashboard = new SwingDashboard(quadtrees[0], hamts[0], bounds);
+        SwingDashboard dashboard = new SwingDashboard(quadtrees, hamts, bounds);
         dashboard.setZones(zones);
         dashboard.setVisible(true);
         GeofenceEngine geofenceEngine = new GeofenceEngine(quadtrees[0], hamts[0], zones);

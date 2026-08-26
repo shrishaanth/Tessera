@@ -71,6 +71,24 @@ public class HamtIndex {
         return new BranchNode(children);
     }
 
+    public int size() {
+        return count(root);
+    }
+
+    private int count(Node node) {
+        if (node instanceof LeafNode leaf) {
+            return leaf.entries().length;
+        }
+        BranchNode branch = (BranchNode) node;
+        int total = 0;
+        for (Node child : branch.children()) {
+            if (child != null) {
+                total += count(child);
+            }
+        }
+        return total;
+    }
+
     private sealed interface Node {
         Node put(long key, Position value, int level);
     }
@@ -88,6 +106,13 @@ public class HamtIndex {
 
         @Override
         public Node put(long key, Position value, int level) {
+            for (int i = 0; i < entries.length; i++) {
+                if (entries[i].key() == key) {
+                    Entry[] newEntries = java.util.Arrays.copyOf(entries, entries.length);
+                    newEntries[i] = new Entry(key, value);
+                    return new LeafNode(newEntries);
+                }
+            }
             Entry[] newEntries = java.util.Arrays.copyOf(entries, entries.length + 1);
             newEntries[entries.length] = new Entry(key, value);
             return new LeafNode(newEntries);
