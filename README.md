@@ -91,9 +91,9 @@ Sample results from a local run (machine-dependent):
 
 | Index | Throughput (ops/sec) | Update p50 (ms) | Query p50 (ms) |
 |-------|---------------------|-----------------|----------------|
-| NaiveIndex | ~68K | 0.00 | 0.01 |
-| GridIndex | ~358K | 0.00 | 0.00 |
-| CowQuadtree | ~361K | 0.00 | 0.00 |
+| NaiveIndex | ~59K | 0.00 | 0.01 |
+| GridIndex | ~216K | 0.00 | 0.00 |
+| CowQuadtree | ~372K | 0.00 | 0.00 |
 
 - Vehicle count: 1000
 - Operations: 10000
