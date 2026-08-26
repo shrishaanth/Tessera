@@ -13,7 +13,7 @@ public class RingBuffer {
         this.size = size;
     }
 
-    public boolean offer(PositionUpdate update) {
+    public synchronized boolean offer(PositionUpdate update) {
         long t = tail;
         long h = head;
         if (t - h >= size) {

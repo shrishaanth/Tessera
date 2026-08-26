@@ -51,7 +51,7 @@ public class MultiShardDashboardTest {
             hamts[1].publish();
 
             // Simulate dashboard aggregation
-            SwingDashboard dashboard = new SwingDashboard(quadtrees, hamts, bounds);
+            SwingDashboard dashboard = new SwingDashboard(quadtrees, hamts, null, bounds, null);
             
             // Verify all vehicles are visible across shards
             int totalVehicles = 0;

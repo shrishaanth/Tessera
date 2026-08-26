@@ -18,6 +18,11 @@ public class CowQuadtree implements SpatialIndex {
         this.publishedRoot = this.workingRoot;
     }
 
+    CowQuadtree(QuadTreeNode publishedRoot) {
+        this.workingRoot = publishedRoot;
+        this.publishedRoot = publishedRoot;
+    }
+
     @Override
     public synchronized void insert(long vehicleId, double x, double y) {
         if (!workingRoot.bounds().contains(x, y)) {
@@ -66,6 +71,10 @@ public class CowQuadtree implements SpatialIndex {
 
     public synchronized void publish() {
         publishedRoot = deepCopy(workingRoot);
+    }
+
+    public CowQuadtree snapshot() {
+        return new CowQuadtree(publishedRoot);
     }
 
     private QuadTreeNode deepCopy(QuadTreeNode node) {

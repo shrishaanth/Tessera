@@ -16,7 +16,7 @@ public class ShardRouter {
     }
 
     public void route(PositionUpdate update) {
-        int shard = (int) (Math.abs(update.vehicleId()) % shardCount);
+        int shard = (int) Math.floorMod(update.vehicleId(), shardCount);
         ringBuffers[shard].offer(update);
     }
 

@@ -11,6 +11,7 @@ public class IndexerThread extends Thread {
     private volatile boolean running = true;
     private final int maxDirty;
     private final long publishIntervalMs;
+    private volatile SpatialSnapshot publishedSnapshot;
 
     private int dirtyCount = 0;
     private long lastPublishTime = System.currentTimeMillis();
@@ -67,8 +68,13 @@ public class IndexerThread extends Thread {
     private void publish() {
         quadtree.publish();
         hamt.publish();
+        publishedSnapshot = new SpatialSnapshot(quadtree.snapshot(), hamt.snapshot());
         dirtyCount = 0;
         lastPublishTime = System.currentTimeMillis();
+    }
+
+    public SpatialSnapshot getPublishedSnapshot() {
+        return publishedSnapshot;
     }
 
     public void shutdown() {

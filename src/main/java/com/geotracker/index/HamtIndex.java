@@ -18,6 +18,11 @@ public class HamtIndex {
         this.root = emptyRoot;
     }
 
+    HamtIndex(Node root) {
+        this.emptyRoot = new BranchNode(new Node[BRANCHING_FACTOR]);
+        this.root = root;
+    }
+
     public synchronized void put(long vehicleId, Position position) {
         root = root.put(vehicleId, position, 0);
     }
@@ -54,6 +59,10 @@ public class HamtIndex {
 
     public synchronized void publish() {
         root = deepCopy(root);
+    }
+
+    public HamtIndex snapshot() {
+        return new HamtIndex(root);
     }
 
     private Node deepCopy(Node node) {
@@ -146,23 +155,24 @@ public class HamtIndex {
         }
 
         private Node putInLeaf(long key, Position value) {
-            for (int i = 0; i < children.length; i++) {
-                if (children[i] instanceof LeafNode leaf) {
-                    for (Entry entry : leaf.entries()) {
-                        if (entry.key() == key) {
-                            Entry[] newEntries = java.util.Arrays.copyOf(leaf.entries(), leaf.entries().length);
-                            newEntries[i] = new Entry(key, value);
+            for (int childIndex = 0; childIndex < children.length; childIndex++) {
+                if (children[childIndex] instanceof LeafNode leaf) {
+                    Entry[] entries = leaf.entries();
+                    for (int entryIndex = 0; entryIndex < entries.length; entryIndex++) {
+                        if (entries[entryIndex].key() == key) {
+                            Entry[] newEntries = java.util.Arrays.copyOf(entries, entries.length);
+                            newEntries[entryIndex] = new Entry(key, value);
                             Node[] newChildren = children();
-                            newChildren[i] = new LeafNode(newEntries);
+                            newChildren[childIndex] = new LeafNode(newEntries);
                             return new BranchNode(newChildren);
                         }
                     }
                 }
             }
-            for (int i = 0; i < children.length; i++) {
-                if (children[i] == null) {
+            for (int childIndex = 0; childIndex < children.length; childIndex++) {
+                if (children[childIndex] == null) {
                     Node[] newChildren = children();
-                    newChildren[i] = new LeafNode(new Entry[]{new Entry(key, value)});
+                    newChildren[childIndex] = new LeafNode(new Entry[]{new Entry(key, value)});
                     return new BranchNode(newChildren);
                 }
             }

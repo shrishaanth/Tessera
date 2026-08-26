@@ -3,10 +3,13 @@ package com.geotracker.dashboard;
 import com.geotracker.geofence.GeofenceEngine;
 import com.geotracker.index.CowQuadtree;
 import com.geotracker.index.HamtIndex;
+import com.geotracker.index.IndexerThread;
+import com.geotracker.index.SpatialSnapshot;
 import com.geotracker.model.BoundingBox;
 import com.geotracker.model.NearestResult;
 import com.geotracker.model.Position;
 import com.geotracker.model.RouteResult;
+import com.geotracker.routing.RoadGraph;
 
 import javax.swing.*;
 import java.awt.*;
@@ -19,7 +22,9 @@ import java.util.List;
 public class SwingDashboard extends JFrame {
     private final CowQuadtree[] quadtrees;
     private final HamtIndex[] hamts;
+    private final IndexerThread[] indexers;
     private final BoundingBox mapBounds;
+    private final RoadGraph roadGraph;
     private final JPanel canvasPanel;
     private final JLabel statsLabel;
     private volatile long frameCount = 0;
@@ -33,10 +38,12 @@ public class SwingDashboard extends JFrame {
     private volatile List<GeofenceEngine.Zone> zones = new ArrayList<>();
     private volatile List<RouteResult> activeRoutes = new ArrayList<>();
 
-    public SwingDashboard(CowQuadtree[] quadtrees, HamtIndex[] hamts, BoundingBox mapBounds) {
+    public SwingDashboard(CowQuadtree[] quadtrees, HamtIndex[] hamts, IndexerThread[] indexers, BoundingBox mapBounds, RoadGraph roadGraph) {
         this.quadtrees = quadtrees;
         this.hamts = hamts;
+        this.indexers = indexers;
         this.mapBounds = mapBounds;
+        this.roadGraph = roadGraph;
         this.canvasPanel = new JPanel() {
             @Override
             protected void paintComponent(Graphics g) {
@@ -115,8 +122,17 @@ public class SwingDashboard extends JFrame {
 
         BoundingBox viewport = new BoundingBox(minX, minY, maxX, maxY);
         List<Long> vehicleIds = new ArrayList<>();
-        for (CowQuadtree qt : quadtrees) {
-            vehicleIds.addAll(qt.rangeQuery(viewport));
+        if (indexers != null) {
+            for (IndexerThread indexer : indexers) {
+                SpatialSnapshot snapshot = indexer.getPublishedSnapshot();
+                if (snapshot != null) {
+                    vehicleIds.addAll(snapshot.quadtree().rangeQuery(viewport));
+                }
+            }
+        } else {
+            for (CowQuadtree qt : quadtrees) {
+                vehicleIds.addAll(qt.rangeQuery(viewport));
+            }
         }
 
         g.setColor(new Color(60, 60, 60));
@@ -137,19 +153,11 @@ public class SwingDashboard extends JFrame {
         }
 
         for (RouteResult route : activeRoutes) {
-            if (route.nodeIds().isEmpty()) continue;
+            if (route.nodeIds().isEmpty() || roadGraph == null) continue;
             g.setColor(new Color(0, 255, 0));
             for (int i = 0; i < route.nodeIds().size() - 1; i++) {
-                Position a = null;
-                Position b = null;
-                for (HamtIndex h : hamts) {
-                    a = h.get(route.nodeIds().get(i));
-                    if (a != null) break;
-                }
-                for (HamtIndex h : hamts) {
-                    b = h.get(route.nodeIds().get(i + 1));
-                    if (b != null) break;
-                }
+                RoadGraph.Node a = roadGraph.getNode(route.nodeIds().get(i));
+                RoadGraph.Node b = roadGraph.getNode(route.nodeIds().get(i + 1));
                 if (a == null || b == null) continue;
                 int ax = (int) ((a.x() - minX) * viewportScale);
                 int ay = (int) ((a.y() - minY) * viewportScale);
@@ -161,9 +169,19 @@ public class SwingDashboard extends JFrame {
 
         for (long vehicleId : vehicleIds) {
             Position pos = null;
-            for (HamtIndex h : hamts) {
-                pos = h.get(vehicleId);
-                if (pos != null) break;
+            if (indexers != null) {
+                for (IndexerThread indexer : indexers) {
+                    SpatialSnapshot snapshot = indexer.getPublishedSnapshot();
+                    if (snapshot != null) {
+                        pos = snapshot.hamt().get(vehicleId);
+                        if (pos != null) break;
+                    }
+                }
+            } else {
+                for (HamtIndex h : hamts) {
+                    pos = h.get(vehicleId);
+                    if (pos != null) break;
+                }
             }
             if (pos == null) continue;
 
@@ -187,8 +205,17 @@ public class SwingDashboard extends JFrame {
             lastFpsTime = now;
         }
         int totalVehicles = 0;
-        for (HamtIndex h : hamts) {
-            totalVehicles += h.size();
+        if (indexers != null) {
+            for (IndexerThread indexer : indexers) {
+                SpatialSnapshot snapshot = indexer.getPublishedSnapshot();
+                if (snapshot != null) {
+                    totalVehicles += snapshot.hamt().size();
+                }
+            }
+        } else {
+            for (HamtIndex h : hamts) {
+                totalVehicles += h.size();
+            }
         }
         statsLabel.setText(String.format("FPS: %d | Vehicles: %d | Scale: %.2f | Center: (%.0f, %.0f)",
                 fps, totalVehicles, viewportScale, viewportCenterX, viewportCenterY));
@@ -206,10 +233,22 @@ public class SwingDashboard extends JFrame {
         double clickY = minY + screenY / viewportScale;
 
         NearestResult best = null;
-        for (CowQuadtree qt : quadtrees) {
-            NearestResult candidate = qt.nearest(clickX, clickY);
-            if (candidate != null && (best == null || candidate.distance() < best.distance())) {
-                best = candidate;
+        if (indexers != null) {
+            for (IndexerThread indexer : indexers) {
+                SpatialSnapshot snapshot = indexer.getPublishedSnapshot();
+                if (snapshot != null) {
+                    NearestResult candidate = snapshot.quadtree().nearest(clickX, clickY);
+                    if (candidate != null && (best == null || candidate.distance() < best.distance())) {
+                        best = candidate;
+                    }
+                }
+            }
+        } else {
+            for (CowQuadtree qt : quadtrees) {
+                NearestResult candidate = qt.nearest(clickX, clickY);
+                if (candidate != null && (best == null || candidate.distance() < best.distance())) {
+                    best = candidate;
+                }
             }
         }
         if (best != null && best.distance() < 50.0 / viewportScale) {

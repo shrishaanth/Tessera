@@ -30,13 +30,13 @@ public class SimulatorClient {
         out.writeDouble(update.x());
         out.writeDouble(update.y());
         out.writeLong(update.timestamp());
-        out.flush();
     }
 
     public void sendBatch(List<PositionUpdate> updates) throws IOException {
         for (PositionUpdate update : updates) {
             send(update);
         }
+        out.flush();
     }
 
     public void close() {
