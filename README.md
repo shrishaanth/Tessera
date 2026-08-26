@@ -87,13 +87,19 @@ Key settings in `Config.java`:
 
 ## Benchmark Results
 
-| Index | Throughput (ops/sec) |
-|-------|---------------------|
-| NaiveIndex | ~80K |
-| GridIndex | ~174K |
-| CowQuadtree | ~318K |
+Sample results from a local run (machine-dependent):
 
-Results vary by machine and JVM state. Run the benchmark harness for current measurements.
+| Index | Throughput (ops/sec) | Update p50 (ms) | Query p50 (ms) |
+|-------|---------------------|-----------------|----------------|
+| NaiveIndex | ~68K | 0.00 | 0.01 |
+| GridIndex | ~358K | 0.00 | 0.00 |
+| CowQuadtree | ~361K | 0.00 | 0.00 |
+
+- Vehicle count: 1000
+- Operations: 10000
+- Benchmark measures update throughput and range-query latency.
+- HAMT is used for O(1) vehicle lookups, not as a spatial-index competitor in this benchmark.
+- Results vary by machine and JVM state. Run the benchmark harness for current measurements.
 
 ## License
 
