@@ -29,10 +29,10 @@ public class WebDemoMain {
         int vehicleCount = Config.DEMO_VEHICLE_COUNT;
 
         boolean useNetty = true;
-        boolean useOsm = false;
+        boolean useOsm = true;
         for (String arg : args) {
             if (arg.equals("--plain")) useNetty = false;
-            if (arg.equals("--osm")) useOsm = true;
+            if (arg.equals("--grid")) useOsm = false;
         }
 
         BoundingBox bounds;

@@ -163,6 +163,15 @@ public class WebServer {
         });
     }
 
+    static Map<String, Object> positionToMap(long vehicleId, Position pos) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("vehicleId", vehicleId);
+        map.put("x", pos.x());
+        map.put("y", pos.y());
+        map.put("timestamp", pos.timestamp());
+        return map;
+    }
+
     private void startPositionBroadcast() {
         BoundingBox fullBounds = new BoundingBox(
                 Math.min(Config.MAP_MIN_X, Config.AREA_MIN_LNG),
@@ -182,11 +191,7 @@ public class WebServer {
                     for (Long id : ids) {
                         Position pos = hamt.get(id);
                         if (pos == null) continue;
-                        Map<String, Object> map = new LinkedHashMap<>();
-                        map.put("vehicleId", id);
-                        map.put("x", pos.x());
-                        map.put("y", pos.y());
-                        map.put("timestamp", pos.timestamp());
+                        Map<String, Object> map = positionToMap(id, pos);
                         allPositions.add(map);
                     }
                 }

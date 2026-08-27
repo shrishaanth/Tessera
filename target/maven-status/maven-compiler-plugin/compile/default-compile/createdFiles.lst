@@ -52,6 +52,7 @@ com\geotracker\routing\RoadGraph.class
 com\geotracker\routing\RoadGraph$Node.class
 com\geotracker\dashboard\SwingDashboard$1.class
 com\geotracker\geofence\RayCaster.class
+com\geotracker\routing\GeoUtils.class
 com\geotracker\model\NearestResult.class
 com\geotracker\ServerMain$1.class
 com\geotracker\model\Position.class

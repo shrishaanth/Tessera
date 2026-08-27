@@ -2,11 +2,14 @@ com\geotracker\geofence\RayCasterJUnitTest.class
 com\geotracker\routing\AStarRouterJUnitTest.class
 com\geotracker\index\HamtIndexJUnitTest.class
 com\geotracker\index\GridIndexJUnitTest.class
+com\geotracker\routing\RoadGraphJsonLoaderJUnitTest.class
 com\geotracker\index\CowQuadtreeJUnitTest.class
 com\geotracker\IntegrationJUnitTest.class
+com\geotracker\web\WebServerJsonSerializationJUnitTest.class
 com\geotracker\index\SnapshotConsistencyJUnitTest.class
 com\geotracker\index\ConcurrentReaderJUnitTest.class
 com\geotracker\routing\RouteVisualizationJUnitTest.class
+com\geotracker\routing\GeoUtilsJUnitTest.class
 com\geotracker\index\NaiveIndexJUnitTest.class
 com\geotracker\simulator\SimulatedVehicleTest.class
 com\geotracker\geofence\GeofenceEngineJUnitTest.class

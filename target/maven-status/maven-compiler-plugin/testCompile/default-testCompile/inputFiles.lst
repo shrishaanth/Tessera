@@ -5,6 +5,7 @@ C:\Users\shris\Desktop\Projects\Geospatial\Tessera\src\test\java\com\geotracker\
 C:\Users\shris\Desktop\Projects\Geospatial\Tessera\src\test\java\com\geotracker\geofence\RayCasterJUnitTest.java
 C:\Users\shris\Desktop\Projects\Geospatial\Tessera\src\test\java\com\geotracker\NetworkIntegrationJUnitTest.java
 C:\Users\shris\Desktop\Projects\Geospatial\Tessera\src\test\java\com\geotracker\index\HamtIndexJUnitTest.java
+C:\Users\shris\Desktop\Projects\Geospatial\Tessera\src\test\java\com\geotracker\web\WebServerJsonSerializationJUnitTest.java
 C:\Users\shris\Desktop\Projects\Geospatial\Tessera\src\test\java\com\geotracker\index\CowQuadtreeJUnitTest.java
 C:\Users\shris\Desktop\Projects\Geospatial\Tessera\src\test\java\com\geotracker\IntegrationJUnitTest.java
 C:\Users\shris\Desktop\Projects\Geospatial\Tessera\src\test\java\com\geotracker\index\QuadtreeStalePositionJUnitTest.java
@@ -13,7 +14,9 @@ C:\Users\shris\Desktop\Projects\Geospatial\Tessera\src\test\java\com\geotracker\
 C:\Users\shris\Desktop\Projects\Geospatial\Tessera\src\test\java\com\geotracker\geofence\GeofenceEngineJUnitTest.java
 C:\Users\shris\Desktop\Projects\Geospatial\Tessera\src\test\java\com\geotracker\index\ConcurrentReaderJUnitTest.java
 C:\Users\shris\Desktop\Projects\Geospatial\Tessera\src\test\java\com\geotracker\index\SnapshotConsistencyJUnitTest.java
+C:\Users\shris\Desktop\Projects\Geospatial\Tessera\src\test\java\com\geotracker\routing\GeoUtilsJUnitTest.java
 C:\Users\shris\Desktop\Projects\Geospatial\Tessera\src\test\java\com\geotracker\routing\AStarRouterJUnitTest.java
+C:\Users\shris\Desktop\Projects\Geospatial\Tessera\src\test\java\com\geotracker\routing\RoadGraphJsonLoaderJUnitTest.java
 C:\Users\shris\Desktop\Projects\Geospatial\Tessera\src\test\java\com\geotracker\dashboard\MultiShardDashboardJUnitTest.java
 C:\Users\shris\Desktop\Projects\Geospatial\Tessera\src\test\java\com\geotracker\dashboard\ConsoleDashboardJUnitTest.java
 C:\Users\shris\Desktop\Projects\Geospatial\Tessera\src\test\java\com\geotracker\index\HamtMultiUpdateJUnitTest.java
