@@ -8,6 +8,7 @@ import com.geotracker.index.SpatialSnapshot;
 import com.geotracker.model.BoundingBox;
 import com.geotracker.model.Position;
 import com.geotracker.model.RouteResult;
+import com.geotracker.model.ZoneEvent;
 import com.geotracker.routing.AStarRouter;
 import com.geotracker.routing.RoadGraph;
 import com.geotracker.util.Config;
@@ -30,6 +31,7 @@ public class WebServer {
     private final RoadGraph graph;
     private final List<GeofenceEngine.Zone> zones;
     private final List<WsContext> wsClients = new CopyOnWriteArrayList<>();
+    private final List<WsContext> eventClients = new CopyOnWriteArrayList<>();
 
     public WebServer(List<IndexerThread> indexers, AStarRouter router, RoadGraph graph, List<GeofenceEngine.Zone> zones) {
         this.indexers = indexers;
@@ -54,6 +56,18 @@ public class WebServer {
             });
             ws.onError(ctx -> {
                 wsClients.remove(ctx);
+            });
+        });
+
+        app.ws("/ws/events", ws -> {
+            ws.onConnect(ctx -> {
+                eventClients.add(ctx);
+            });
+            ws.onClose(ctx -> {
+                eventClients.remove(ctx);
+            });
+            ws.onError(ctx -> {
+                eventClients.remove(ctx);
             });
         });
 
@@ -186,6 +200,25 @@ public class WebServer {
                 System.err.println("WebSocket broadcast error: " + e.getMessage());
             }
         }, 200, 200, TimeUnit.MILLISECONDS);
+    }
+
+    public void pushZoneEvent(ZoneEvent event) {
+        try {
+            Map<String, Object> map = new LinkedHashMap<>();
+            map.put("type", "zoneEvent");
+            map.put("vehicleId", event.vehicleId());
+            map.put("zoneId", event.zoneId());
+            map.put("eventType", event.type().name().toLowerCase());
+            map.put("timestamp", event.timestamp());
+            String json = mapper.writeValueAsString(map);
+            for (WsContext client : eventClients) {
+                if (client.session.isOpen()) {
+                    client.send(json);
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Zone event broadcast error: " + e.getMessage());
+        }
     }
 
     public void stop() {

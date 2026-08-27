@@ -7,6 +7,7 @@ com\geotracker\index\HamtIndex$Entry.class
 com\geotracker\simulator\SimulatorClient.class
 com\geotracker\index\IndexerThread.class
 com\geotracker\benchmark\BenchmarkHarness.class
+com\geotracker\simulator\VehicleSpawnHelper.class
 com\geotracker\index\SpatialSnapshot.class
 com\geotracker\dashboard\SwingDashboard.class
 com\geotracker\ingestion\IngestionServer.class

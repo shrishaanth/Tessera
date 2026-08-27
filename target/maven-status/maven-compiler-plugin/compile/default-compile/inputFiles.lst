@@ -4,6 +4,7 @@ C:\Users\shris\Desktop\Projects\Geospatial\Tessera\src\main\java\com\geotracker\
 C:\Users\shris\Desktop\Projects\Geospatial\Tessera\src\main\java\com\geotracker\index\NaiveIndex.java
 C:\Users\shris\Desktop\Projects\Geospatial\Tessera\src\main\java\com\geotracker\benchmark\LatencyRecorder.java
 C:\Users\shris\Desktop\Projects\Geospatial\Tessera\src\main\java\com\geotracker\ingestion\NettyIngestionServer.java
+C:\Users\shris\Desktop\Projects\Geospatial\Tessera\src\main\java\com\geotracker\simulator\VehicleSpawnHelper.java
 C:\Users\shris\Desktop\Projects\Geospatial\Tessera\src\main\java\com\geotracker\index\GridIndex.java
 C:\Users\shris\Desktop\Projects\Geospatial\Tessera\src\main\java\com\geotracker\index\QuadTreeNode.java
 C:\Users\shris\Desktop\Projects\Geospatial\Tessera\src\main\java\com\geotracker\routing\AStarRouter.java

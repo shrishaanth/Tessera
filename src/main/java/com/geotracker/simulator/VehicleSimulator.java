@@ -61,26 +61,10 @@ public class VehicleSimulator {
         if (largestComponentNodes.isEmpty()) return;
         Random random = new Random(seed);
         for (int i = 0; i < count; i++) {
-            long startId = largestComponentNodes.get(random.nextInt(largestComponentNodes.size()));
-            // For next node, pick a random node from the same component that's adjacent
-            List<RoadGraph.Edge> edges = graph.getEdges(startId);
-            long nextId;
-            if (edges.isEmpty()) {
-                nextId = startId;
-            } else {
-                List<Long> validNexts = new ArrayList<>();
-                for (RoadGraph.Edge e : edges) {
-                    if (largestComponentNodes.contains(e.toId())) {
-                        validNexts.add(e.toId());
-                    }
-                }
-                if (validNexts.isEmpty()) {
-                    nextId = startId;
-                } else {
-                    nextId = validNexts.get(random.nextInt(validNexts.size()));
-                }
-            }
-            vehicles.add(new SimulatedVehicle(i, startId, nextId, seed));
+            long[] pair = VehicleSpawnHelper.pickStartAndNext(graph, largestComponentNodes, random);
+            long startId = pair[0];
+            long nextId = pair[1];
+            vehicles.add(new SimulatedVehicle(i, startId, nextId, seed, largestComponentNodes));
         }
     }
 

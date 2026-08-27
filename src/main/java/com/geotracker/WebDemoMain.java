@@ -198,7 +198,7 @@ public class WebDemoMain {
                 try {
                     var events = geofenceEngine.check();
                     for (var event : events) {
-                        System.out.println("ALERT: Vehicle " + event.vehicleId() + " " + event.type() + " zone " + event.zoneId());
+                        webServer.pushZoneEvent(event);
                     }
                     Thread.sleep(500);
                 } catch (Exception e) {

@@ -11,13 +11,15 @@ public class SimulatedVehicle {
     private long nextNodeId;
     private double progress;
     private final Random random;
+    private final List<Long> largestComponentNodes;
 
-    public SimulatedVehicle(long vehicleId, long startNodeId, long nextNodeId, long seed) {
+    public SimulatedVehicle(long vehicleId, long startNodeId, long nextNodeId, long seed, List<Long> largestComponentNodes) {
         this.vehicleId = vehicleId;
         this.currentNodeId = startNodeId;
         this.nextNodeId = nextNodeId;
         this.progress = 0.0;
         this.random = new Random(seed + vehicleId);
+        this.largestComponentNodes = largestComponentNodes;
     }
 
     public PositionUpdate update(RoadGraph graph, double speed, double dt) {
@@ -39,12 +41,12 @@ public class SimulatedVehicle {
             currentNodeId = nextNodeId;
             List<RoadGraph.Edge> edges = graph.getEdges(currentNodeId);
             if (edges.isEmpty()) {
-                List<RoadGraph.Node> allNodes = new ArrayList<>(graph.getAllNodes());
-                RoadGraph.Node newTarget = allNodes.get(random.nextInt(allNodes.size()));
-                nextNodeId = newTarget.id();
-                RoadGraph.Node newNext = graph.getNode(nextNodeId);
-                x = newNext.x();
-                y = newNext.y();
+                long[] pair = VehicleSpawnHelper.pickStartAndNext(graph, largestComponentNodes, random);
+                currentNodeId = pair[0];
+                nextNodeId = pair[1];
+                RoadGraph.Node newNode = graph.getNode(currentNodeId);
+                x = newNode.x();
+                y = newNode.y();
             } else {
                 RoadGraph.Edge edge = edges.get(random.nextInt(edges.size()));
                 nextNodeId = edge.toId();

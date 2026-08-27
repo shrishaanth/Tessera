@@ -1,7 +1,8 @@
-// Tessera Live Map - Phase 3 (real coordinates, OSM road graph, EPSG3857)
+// Tessera Live Map - Phase 4 (real coordinates, OSM road graph, EPSG3857, live zone events)
 
 const AREA_BOUNDS = [[47.646, -122.334], [47.650, -122.330]];
 const WS_URL = `ws://${location.host}/ws/positions`;
+const WS_URL_EVENTS = `ws://${location.host}/ws/events`;
 const API_GEOFENCES = `/api/geofences`;
 const API_ROUTE = `/api/route`;
 
@@ -58,6 +59,28 @@ function renderAlerts() {
     ).join('');
 }
 
+function flashMarker(vehicleId) {
+    const m = markers.get(vehicleId);
+    if (!m) return;
+    const originalColor = m.options.fillColor;
+    m.setStyle({ color: '#ffeb3b', weight: 4, fillColor: '#ffeb3b' });
+    setTimeout(() => {
+        m.setStyle({ color: '#fff', weight: 2, fillColor: originalColor });
+    }, 600);
+}
+
+function flashZone(zoneId) {
+    geofenceLayer.eachLayer(layer => {
+        if (layer.getPopup() && layer.getPopup().getContent().includes(zoneId.toUpperCase())) {
+            const originalOpacity = layer.options.fillOpacity;
+            layer.setStyle({ fillOpacity: 0.55, weight: 4 });
+            setTimeout(() => {
+                layer.setStyle({ fillOpacity: originalOpacity, weight: 2 });
+            }, 600);
+        }
+    });
+}
+
 function updateVehicles(positions, zones) {
     const seen = new Set();
 
@@ -71,18 +94,13 @@ function updateVehicles(positions, zones) {
             m.setLatLng([pos.y, pos.x]);
             const prevZones = m._zones || [];
             const newZones = pointZones.map(z => z.id);
-
-            for (const z of newZones) {
-                if (!prevZones.includes(z)) {
-                    addAlert(`Vehicle ${id} ENTER zone ${z}`, 'enter');
-                }
-            }
-            for (const z of prevZones) {
-                if (!newZones.includes(z)) {
-                    addAlert(`Vehicle ${id} EXIT zone ${z}`, 'exit');
-                }
-            }
             m._zones = newZones;
+
+            const isInZone = newZones.length > 0;
+            const newColor = isInZone ? (ZONE_COLORS[newZones[0]] || '#ff5722') : '#3399ff';
+            if (m.options.fillColor !== newColor) {
+                m.setStyle({ fillColor: newColor });
+            }
         } else {
             const isInZone = pointZones.length > 0;
             const color = isInZone ? (ZONE_COLORS[pointZones[0].id] || '#ff5722') : '#3399ff';
@@ -182,6 +200,7 @@ async function requestRoute(destX, destY) {
 
 let zones = [];
 let ws = null;
+let wsEvents = null;
 
 function connect() {
     ws = new WebSocket(WS_URL);
@@ -199,13 +218,38 @@ function connect() {
         }
     };
     ws.onclose = () => {
-        console.log('WebSocket closed, reconnecting in 2s...');
+        console.log('Positions WebSocket closed, reconnecting in 2s...');
         document.getElementById('statusDot').className = 'status-dot disconnected';
         document.getElementById('statusText').textContent = 'Reconnecting...';
         setTimeout(connect, 2000);
     };
     ws.onerror = (err) => {
         console.error('WebSocket error:', err);
+    };
+
+    wsEvents = new WebSocket(WS_URL_EVENTS);
+    wsEvents.onopen = () => {
+        console.log('Zone events WebSocket connected');
+    };
+    wsEvents.onmessage = (event) => {
+        try {
+            const msg = JSON.parse(event.data);
+            if (msg.type === 'zoneEvent') {
+                const { vehicleId, zoneId, eventType } = msg;
+                addAlert(`Vehicle ${vehicleId} ${eventType.toUpperCase()} zone ${zoneId}`, eventType);
+                flashMarker(vehicleId);
+                flashZone(zoneId);
+            }
+        } catch (e) {
+            console.error('Failed to parse zone event:', e);
+        }
+    };
+    wsEvents.onclose = () => {
+        console.log('Zone events WebSocket closed, reconnecting in 2s...');
+        setTimeout(connect, 2000);
+    };
+    wsEvents.onerror = (err) => {
+        console.error('Zone events WebSocket error:', err);
     };
 }
 
