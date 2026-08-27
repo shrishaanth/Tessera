@@ -15,7 +15,6 @@ import com.geotracker.util.Config;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import io.javalin.Javalin;
-import io.javalin.http.staticfiles.Location;
 import io.javalin.websocket.WsContext;
 
 import java.util.*;
@@ -38,9 +37,7 @@ public class WebServer {
         this.graph = graph;
         this.zones = zones;
         this.mapper = new ObjectMapper();
-        this.app = Javalin.create(config -> {
-            config.staticFiles.add("/public", Location.CLASSPATH);
-        }).start(Config.WEB_PORT);
+        this.app = Javalin.create().start(Config.WEB_PORT);
         this.scheduler = Executors.newSingleThreadScheduledExecutor();
 
         configureRoutes();
@@ -131,6 +128,24 @@ public class WebServer {
 
         app.get("/", ctx -> {
             ctx.redirect("/index.html");
+        });
+
+        app.get("/index.html", ctx -> {
+            ctx.contentType("text/html");
+            try (var is = getClass().getClassLoader().getResourceAsStream("public/index.html")) {
+                ctx.result(new String(is.readAllBytes()));
+            } catch (Exception e) {
+                ctx.status(500).result("Failed to load index.html");
+            }
+        });
+
+        app.get("/app.js", ctx -> {
+            ctx.contentType("application/javascript");
+            try (var is = getClass().getClassLoader().getResourceAsStream("public/app.js")) {
+                ctx.result(new String(is.readAllBytes()));
+            } catch (Exception e) {
+                ctx.status(500).result("Failed to load app.js");
+            }
         });
     }
 
