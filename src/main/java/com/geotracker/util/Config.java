@@ -4,7 +4,7 @@ public class Config {
     public static final int PORT = 9090;
     public static final int SHARDS = 4;
     public static final int RING_BUFFER_SIZE = 65536;
-    public static final int QUADTREE_LEAF_CAPACITY = 4;
+    public static final int QUADTREE_LEAF_CAPACITY = 32;
     public static final int PUBLISH_MAX_DIRTY = 50;
     public static final long PUBLISH_INTERVAL_MS = 20;
     public static final int VEHICLE_COUNT = 1000;

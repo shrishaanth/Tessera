@@ -9,6 +9,7 @@ public class HamtIndex {
     private static final int BRANCHING_FACTOR = 32;
     private static final int BITS_PER_LEVEL = 5;
     private static final int MAX_DEPTH = 6;
+    private static final int SPLIT_THRESHOLD = 4;
 
     private volatile Node root;
     private final Node emptyRoot;
@@ -149,7 +150,29 @@ public class HamtIndex {
             if (child == null) {
                 newChildren[index] = new LeafNode(new Entry[]{new Entry(key, value)});
             } else {
-                newChildren[index] = child.put(key, value, level + 1);
+                Node updated = child.put(key, value, level + 1);
+                if (updated instanceof LeafNode leaf && leaf.entries().length > SPLIT_THRESHOLD && level + 1 < MAX_DEPTH) {
+                    newChildren[index] = splitLeaf(leaf, level + 1);
+                } else {
+                    newChildren[index] = updated;
+                }
+            }
+            return new BranchNode(newChildren);
+        }
+
+        private Node splitLeaf(LeafNode leaf, int level) {
+            Node[] newChildren = new Node[BRANCHING_FACTOR];
+            for (Entry entry : leaf.entries()) {
+                int hash = Long.hashCode(entry.key());
+                int index = (hash >>> (level * BITS_PER_LEVEL)) & (BRANCHING_FACTOR - 1);
+                Node child = newChildren[index];
+                if (child == null) {
+                    newChildren[index] = new LeafNode(new Entry[]{entry});
+                } else if (child instanceof LeafNode existingLeaf) {
+                    Entry[] entries = java.util.Arrays.copyOf(existingLeaf.entries(), existingLeaf.entries().length + 1);
+                    entries[entries.length - 1] = entry;
+                    newChildren[index] = new LeafNode(entries);
+                }
             }
             return new BranchNode(newChildren);
         }

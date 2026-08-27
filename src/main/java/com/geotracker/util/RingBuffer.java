@@ -24,7 +24,7 @@ public class RingBuffer {
         return true;
     }
 
-    public PositionUpdate poll() {
+    public synchronized PositionUpdate poll() {
         long h = head;
         long t = tail;
         if (h == t) {

@@ -2,13 +2,14 @@ package com.geotracker.index;
 
 import com.geotracker.model.BoundingBox;
 import com.geotracker.model.NearestResult;
+import com.geotracker.util.Config;
 
 import java.util.ArrayList;
 import java.util.List;
 
 public class CowQuadtree implements SpatialIndex {
-    private static final int MAX_CAPACITY = 32;
     private static final int MAX_DEPTH = 20;
+    private static final int MAX_CAPACITY = Config.QUADTREE_LEAF_CAPACITY;
 
     private volatile QuadTreeNode publishedRoot;
     private QuadTreeNode workingRoot;
@@ -206,6 +207,9 @@ public class CowQuadtree implements SpatialIndex {
                     bestX = leaf.xs()[i];
                     bestY = leaf.ys()[i];
                 }
+            }
+            if (bestId == -1) {
+                return null;
             }
             return new NearestResult(bestId, bestX, bestY, Math.sqrt(bestDist));
         }

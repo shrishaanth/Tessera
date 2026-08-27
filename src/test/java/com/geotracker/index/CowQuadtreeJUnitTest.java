@@ -41,6 +41,13 @@ public class CowQuadtreeJUnitTest {
     }
 
     @Test
+    void nearestEmptyTreeReturnsNull() {
+        CowQuadtree qt = new CowQuadtree(new BoundingBox(0, 0, 100, 100));
+        qt.publish();
+        assertNull(qt.nearest(50, 50));
+    }
+
+    @Test
     void updateMovesPoint() {
         CowQuadtree qt = new CowQuadtree(new BoundingBox(0, 0, 100, 100));
         qt.insert(1, 0, 0);

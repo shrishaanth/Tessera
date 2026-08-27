@@ -1,3 +1,4 @@
+com\geotracker\index\GridIndex$Entry.class
 com\geotracker\ingestion\NettyIngestionServer$1.class
 com\geotracker\geofence\GeofenceEngine.class
 com\geotracker\index\GridIndex.class

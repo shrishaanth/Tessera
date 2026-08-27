@@ -6,11 +6,13 @@ import com.geotracker.model.NearestResult;
 import java.util.*;
 
 public class GridIndex implements SpatialIndex {
+    private record Entry(long vehicleId, double x, double y) {}
+
     private final double minX, minY, maxX, maxY;
     private final int cellX, cellY;
     private final double cellWidth, cellHeight;
     @SuppressWarnings("unchecked")
-    private final List<Long>[][] grid;
+    private final List<Entry>[][] grid;
 
     public GridIndex(BoundingBox bounds, int cellX, int cellY) {
         this.minX = bounds.minX();
@@ -35,7 +37,7 @@ public class GridIndex implements SpatialIndex {
         int cy = (int) ((y - minY) / cellHeight);
         cx = Math.max(0, Math.min(cellX - 1, cx));
         cy = Math.max(0, Math.min(cellY - 1, cy));
-        grid[cx][cy].add(vehicleId);
+        grid[cx][cy].add(new Entry(vehicleId, x, y));
     }
 
     @Override
@@ -44,7 +46,7 @@ public class GridIndex implements SpatialIndex {
         int cy = (int) ((y - minY) / cellHeight);
         cx = Math.max(0, Math.min(cellX - 1, cx));
         cy = Math.max(0, Math.min(cellY - 1, cy));
-        grid[cx][cy].remove((Long) vehicleId);
+        grid[cx][cy].removeIf(e -> e.vehicleId() == vehicleId);
     }
 
     @Override
@@ -60,7 +62,9 @@ public class GridIndex implements SpatialIndex {
         maxCy = Math.min(cellY - 1, maxCy);
         for (int i = minCx; i <= maxCx; i++) {
             for (int j = minCy; j <= maxCy; j++) {
-                result.addAll(grid[i][j]);
+                for (Entry e : grid[i][j]) {
+                    result.add(e.vehicleId());
+                }
             }
         }
         return new ArrayList<>(result);
@@ -75,21 +79,33 @@ public class GridIndex implements SpatialIndex {
 
         int cx = (int) ((x - minX) / cellWidth);
         int cy = (int) ((y - minY) / cellHeight);
-        int radius = 0;
-        boolean found = false;
+        int maxRadius = Math.max(cellX, cellY);
 
-        while (!found && radius < Math.max(cellX, cellY)) {
-            for (int i = Math.max(0, cx - radius); i <= Math.min(cellX - 1, cx + radius); i++) {
-                for (int j = Math.max(0, cy - radius); j <= Math.min(cellY - 1, cy + radius); j++) {
-                    if (i < cx - radius || i > cx + radius || j < cy - radius || j > cy + radius) continue;
-                    for (Long id : grid[i][j]) {
-                        // We don't have x,y in GridIndex, so return just id
-                        // For proper nearest, we'd need a separate lookup
+        for (int radius = 0; radius < maxRadius; radius++) {
+            int iMin = Math.max(0, cx - radius);
+            int iMax = Math.min(cellX - 1, cx + radius);
+            int jMin = Math.max(0, cy - radius);
+            int jMax = Math.min(cellY - 1, cy + radius);
+            for (int i = iMin; i <= iMax; i++) {
+                for (int j = jMin; j <= jMax; j++) {
+                    if (radius > 0 && (i > iMin && i < iMax && j > jMin && j < jMax)) continue;
+                    for (Entry e : grid[i][j]) {
+                        double dx = e.x() - x;
+                        double dy = e.y() - y;
+                        double dist = dx * dx + dy * dy;
+                        if (dist < bestDist) {
+                            bestDist = dist;
+                            bestId = e.vehicleId();
+                            bestX = e.x();
+                            bestY = e.y();
+                        }
                     }
                 }
             }
-            radius++;
+            if (bestId != -1) {
+                return new NearestResult(bestId, bestX, bestY, Math.sqrt(bestDist));
+            }
         }
-        return new NearestResult(bestId, bestX, bestY, bestDist);
+        return null;
     }
 }

@@ -39,8 +39,12 @@ public class SimulatedVehicle {
             currentNodeId = nextNodeId;
             List<RoadGraph.Edge> edges = graph.getEdges(currentNodeId);
             if (edges.isEmpty()) {
-                x = current.x();
-                y = current.y();
+                List<RoadGraph.Node> allNodes = new ArrayList<>(graph.getAllNodes());
+                RoadGraph.Node newTarget = allNodes.get(random.nextInt(allNodes.size()));
+                nextNodeId = newTarget.id();
+                RoadGraph.Node newNext = graph.getNode(nextNodeId);
+                x = newNext.x();
+                y = newNext.y();
             } else {
                 RoadGraph.Edge edge = edges.get(random.nextInt(edges.size()));
                 nextNodeId = edge.toId();

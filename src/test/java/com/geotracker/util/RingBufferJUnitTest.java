@@ -70,4 +70,34 @@ public class RingBufferJUnitTest {
         }
         assertEquals(totalProduced.get(), consumed);
     }
+
+    @Test
+    void concurrentOfferAndPollDoNotCorrupt() throws Exception {
+        RingBuffer rb = new RingBuffer(5000);
+        int producerCount = 4;
+        int updatesPerProducer = 500;
+        java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(producerCount);
+        java.util.concurrent.atomic.AtomicInteger totalProduced = new java.util.concurrent.atomic.AtomicInteger(0);
+
+        for (int p = 0; p < producerCount; p++) {
+            int producerId = p;
+            new Thread(() -> {
+                for (int i = 0; i < updatesPerProducer; i++) {
+                    long vehicleId = producerId * updatesPerProducer + i;
+                    rb.offer(new PositionUpdate(vehicleId, i, i, i));
+                    totalProduced.incrementAndGet();
+                }
+                latch.countDown();
+            }).start();
+        }
+
+        latch.await();
+        int consumed = 0;
+        PositionUpdate update;
+        while ((update = rb.poll()) != null) {
+            assertNotNull(update);
+            consumed++;
+        }
+        assertEquals(totalProduced.get(), consumed);
+    }
 }

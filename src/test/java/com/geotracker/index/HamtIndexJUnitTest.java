@@ -75,4 +75,19 @@ public class HamtIndexJUnitTest {
         assertEquals(new Position(3, 3, 3), hamt.get(key));
         assertEquals(1, hamt.size());
     }
+
+    @Test
+    void manyCollidingKeysTriggerSplitting() {
+        HamtIndex hamt = new HamtIndex();
+        int count = 20;
+        for (int i = 0; i < count; i++) {
+            long key = (long) i << 5;
+            hamt.put(key, new Position(i, i, i));
+        }
+        for (int i = 0; i < count; i++) {
+            long key = (long) i << 5;
+            assertEquals(new Position(i, i, i), hamt.get(key));
+        }
+        assertEquals(count, hamt.size());
+    }
 }
