@@ -66,10 +66,53 @@ public class AStarRouter {
         return new RouteResult(List.of(), 0, vehicleId);
     }
 
-    private double heuristic(RoadGraph.Node a, RoadGraph.Node b) {
+    private static final double EARTH_RADIUS_M = 6371000.0;
+
+    private static boolean isLatLng(double x, double y) {
+        return x >= -180.0 && x <= 180.0 && y >= -90.0 && y <= 90.0;
+    }
+
+    private static double haversineMeters(double lat1, double lon1, double lat2, double lon2) {
+        double dLat = Math.toRadians(lat2 - lat1);
+        double dLon = Math.toRadians(lon2 - lon1);
+        double a = Math.sin(dLat / 2) * Math.sin(dLat / 2)
+                 + Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2))
+                 * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return EARTH_RADIUS_M * c;
+    }
+
+    private double distance(RoadGraph.Node a, RoadGraph.Node b) {
+        if (isLatLng(a.x(), a.y()) && isLatLng(b.x(), b.y())) {
+            return haversineMeters(a.y(), a.x(), b.y(), b.x());
+        }
         double dx = a.x() - b.x();
         double dy = a.y() - b.y();
         return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    private double heuristic(RoadGraph.Node a, RoadGraph.Node b) {
+        return distance(a, b);
+    }
+
+    private RoadGraph.Node findNearestNode(double x, double y) {
+        RoadGraph.Node best = null;
+        double bestDist = Double.MAX_VALUE;
+        for (RoadGraph.Node node : graph.getAllNodes()) {
+            double d;
+            if (isLatLng(x, y) && isLatLng(node.x(), node.y())) {
+                d = haversineMeters(y, x, node.y(), node.x());
+            } else {
+                double dx = node.x() - x;
+                double dy = node.y() - y;
+                d = dx * dx + dy * dy;
+            }
+            if (d < bestDist) {
+                bestDist = d;
+                best = node;
+            }
+        }
+        return best;
     }
 
     private List<Long> reconstructPath(Map<Long, Long> cameFrom, long currentId) {
@@ -80,21 +123,6 @@ public class AStarRouter {
             path.add(0, currentId);
         }
         return path;
-    }
-
-    private RoadGraph.Node findNearestNode(double x, double y) {
-        RoadGraph.Node best = null;
-        double bestDist = Double.MAX_VALUE;
-        for (RoadGraph.Node node : graph.getAllNodes()) {
-            double dx = node.x() - x;
-            double dy = node.y() - y;
-            double dist = dx * dx + dy * dy;
-            if (dist < bestDist) {
-                bestDist = dist;
-                best = node;
-            }
-        }
-        return best;
     }
 
     private record NodeEntry(long id, double fScore) {}

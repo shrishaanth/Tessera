@@ -1,5 +1,6 @@
 package com.geotracker.routing;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.*;
 
 public class RoadGraph {
@@ -37,6 +38,28 @@ public class RoadGraph {
 
     public static RoadGridBuilder builder() {
         return new RoadGridBuilder();
+    }
+
+    public static RoadGraph loadFromJson(String json) throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+        Map<?, ?> root = mapper.readValue(json, Map.class);
+        List<Map<?, ?>> nodes = (List<Map<?, ?>>) root.get("nodes");
+        List<Map<?, ?>> edges = (List<Map<?, ?>>) root.get("edges");
+
+        RoadGraph graph = new RoadGraph();
+        for (Map<?, ?> n : nodes) {
+            long id = ((Number) n.get("id")).longValue();
+            double x = ((Number) n.get("x")).doubleValue();
+            double y = ((Number) n.get("y")).doubleValue();
+            graph.addNode(new Node(id, x, y));
+        }
+        for (Map<?, ?> e : edges) {
+            long from = ((Number) e.get("from")).longValue();
+            long to = ((Number) e.get("to")).longValue();
+            double weight = ((Number) e.get("weight")).doubleValue();
+            graph.addEdge(new Edge(from, to, weight));
+        }
+        return graph;
     }
 
     public static class RoadGridBuilder {

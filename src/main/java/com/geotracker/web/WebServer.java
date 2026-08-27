@@ -150,7 +150,12 @@ public class WebServer {
     }
 
     private void startPositionBroadcast() {
-        BoundingBox fullBounds = new BoundingBox(Config.MAP_MIN_X, Config.MAP_MIN_Y, Config.MAP_MAX_X, Config.MAP_MAX_Y);
+        BoundingBox fullBounds = new BoundingBox(
+                Math.min(Config.MAP_MIN_X, Config.AREA_MIN_LNG),
+                Math.min(Config.MAP_MIN_Y, Config.AREA_MIN_LAT),
+                Math.max(Config.MAP_MAX_X, Config.AREA_MAX_LNG),
+                Math.max(Config.MAP_MAX_Y, Config.AREA_MAX_LAT)
+        );
         scheduler.scheduleAtFixedRate(() -> {
             try {
                 List<Map<String, Object>> allPositions = new ArrayList<>();

@@ -29,7 +29,9 @@ public class PositionUpdateDecoder extends ByteToMessageDecoder {
         if (Double.isNaN(x) || Double.isInfinite(x) || Double.isNaN(y) || Double.isInfinite(y)) {
             return;
         }
-        if (x < Config.MAP_MIN_X || x > Config.MAP_MAX_X || y < Config.MAP_MIN_Y || y > Config.MAP_MAX_Y) {
+        boolean inSynthetic = x >= Config.MAP_MIN_X && x <= Config.MAP_MAX_X && y >= Config.MAP_MIN_Y && y <= Config.MAP_MAX_Y;
+        boolean inOsm = x >= Config.AREA_MIN_LNG && x <= Config.AREA_MAX_LNG && y >= Config.AREA_MIN_LAT && y <= Config.AREA_MAX_LAT;
+        if (!inSynthetic && !inOsm) {
             return;
         }
 

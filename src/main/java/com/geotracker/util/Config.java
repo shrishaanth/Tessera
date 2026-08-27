@@ -16,4 +16,11 @@ public class Config {
     public static final double MAP_MAX_X = 1000.0;
     public static final double MAP_MIN_Y = 0.0;
     public static final double MAP_MAX_Y = 1000.0;
+
+    public static final double AREA_MIN_LAT = 47.646;
+    public static final double AREA_MAX_LAT = 47.650;
+    public static final double AREA_MIN_LNG = -122.334;
+    public static final double AREA_MAX_LNG = -122.330;
+    public static final String AREA_NAME = "Gas Works Park, Seattle, WA";
+    public static final String ROADGRAPH_RESOURCE = "/roadgraph/osm-roadgraph.json";
 }

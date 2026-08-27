@@ -1,18 +1,20 @@
-// Tessera Live Map - Phase 2 (Leaflet frontend with live updates, route viz, alerts)
+// Tessera Live Map - Phase 3 (real coordinates, OSM road graph, EPSG3857)
 
-const MAP_BOUNDS = [[0, 0], [1000, 1000]];
+const AREA_BOUNDS = [[47.646, -122.334], [47.650, -122.330]];
 const WS_URL = `ws://${location.host}/ws/positions`;
 const API_GEOFENCES = `/api/geofences`;
 const API_ROUTE = `/api/route`;
 
 const map = L.map('map', {
-    crs: L.CRS.Simple,
-    minZoom: -2,
-    maxZoom: 2,
     zoomControl: true
-}).fitBounds(MAP_BOUNDS);
+}).setView([47.648, -122.332], 16);
 
-L.rectangle(MAP_BOUNDS, {color: "#333", weight: 1, fillColor: "#1a1a2e", fillOpacity: 1}).addTo(map);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    maxZoom: 19
+}).addTo(map);
+
+map.fitBounds(AREA_BOUNDS);
 
 const markers = new Map();
 let selectedVehicleId = null;
@@ -58,13 +60,11 @@ function renderAlerts() {
 
 function updateVehicles(positions, zones) {
     const seen = new Set();
-    const currentZones = new Map();
 
     for (const pos of positions) {
         const id = pos.vehicleId;
         seen.add(id);
         const pointZones = getZonesForPoint(pos.x, pos.y, zones);
-        currentZones.set(id, pointZones);
 
         if (markers.has(id)) {
             const m = markers.get(id);
@@ -93,7 +93,7 @@ function updateVehicles(positions, zones) {
                 fillOpacity: 0.9,
                 weight: 2
             }).addTo(map);
-            marker.bindPopup(`<b>Vehicle ${id}</b><br/>x: ${pos.x.toFixed(1)}, y: ${pos.y.toFixed(1)}<br/>Zones: ${pointZones.map(z => z.id).join(', ') || 'none'}`);
+            marker.bindPopup(`<b>Vehicle ${id}</b><br/>lat: ${pos.y.toFixed(5)}, lng: ${pos.x.toFixed(5)}<br/>Zones: ${pointZones.map(z => z.id).join(', ') || 'none'}`);
             marker.on('click', () => selectVehicle(id));
             markers.set(id, marker);
             marker._zones = pointZones.map(z => z.id);
@@ -153,9 +153,6 @@ async function requestRoute(destX, destY) {
     }
     const marker = markers.get(selectedVehicleId);
     if (!marker) return;
-    const latlng = marker.getLatLng();
-    const startX = latlng.lng;
-    const startY = latlng.lat;
 
     routeLayer.clearLayers();
     const url = `${API_ROUTE}?vehicleId=${selectedVehicleId}&destX=${destX}&destY=${destY}`;
@@ -163,8 +160,8 @@ async function requestRoute(destX, destY) {
         const resp = await fetch(url);
         if (!resp.ok) throw new Error('Route request failed');
         const route = await resp.json();
-        if (route.path && route.path.length > 1) {
-            const latlngs = route.path.map(p => [p.y, p.x]);
+        if (route.nodes && route.nodes.length > 1) {
+            const latlngs = route.nodes.map(p => [p.y, p.x]);
             L.polyline(latlngs, {
                 color: '#e91e63',
                 weight: 3,
@@ -173,7 +170,7 @@ async function requestRoute(destX, destY) {
             }).addTo(routeLayer);
             L.marker(latlngs[latlngs.length - 1], {
                 icon: L.divIcon({ className: 'dest-marker', html: '&#9733;', iconSize: [16, 16] })
-            }).addTo(routeLayer).bindPopup(`Destination (${destX}, ${destY})`);
+            }).addTo(routeLayer).bindPopup(`Destination (${destX.toFixed(5)}, ${destY.toFixed(5)})`);
         } else {
             alert('No route found to destination.');
         }
@@ -213,9 +210,9 @@ function connect() {
 }
 
 map.on('click', (e) => {
-    const x = e.latlng.lng;
-    const y = e.latlng.lat;
-    requestRoute(Math.round(x), Math.round(y));
+    const lat = e.latlng.lat;
+    const lng = e.latlng.lng;
+    requestRoute(lng, lat);
 });
 
 (async function init() {

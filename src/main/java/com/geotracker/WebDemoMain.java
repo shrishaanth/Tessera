@@ -17,6 +17,8 @@ import com.geotracker.simulator.VehicleSimulator;
 import com.geotracker.util.Config;
 import com.geotracker.web.WebServer;
 
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
@@ -26,7 +28,19 @@ public class WebDemoMain {
         int shards = Config.SHARDS;
         int vehicleCount = Config.DEMO_VEHICLE_COUNT;
 
-        BoundingBox bounds = new BoundingBox(Config.MAP_MIN_X, Config.MAP_MIN_Y, Config.MAP_MAX_X, Config.MAP_MAX_Y);
+        boolean useNetty = true;
+        boolean useOsm = false;
+        for (String arg : args) {
+            if (arg.equals("--plain")) useNetty = false;
+            if (arg.equals("--osm")) useOsm = true;
+        }
+
+        BoundingBox bounds;
+        if (useOsm) {
+            bounds = new BoundingBox(Config.AREA_MIN_LNG, Config.AREA_MIN_LAT, Config.AREA_MAX_LNG, Config.AREA_MAX_LAT);
+        } else {
+            bounds = new BoundingBox(Config.MAP_MIN_X, Config.MAP_MIN_Y, Config.MAP_MAX_X, Config.MAP_MAX_Y);
+        }
 
         ShardRouter shardRouter = new ShardRouter(shards, Config.RING_BUFFER_SIZE);
         CowQuadtree[] quadtrees = new CowQuadtree[shards];
@@ -38,11 +52,6 @@ public class WebDemoMain {
             hamts[i] = new HamtIndex();
             indexers[i] = new IndexerThread(i, shardRouter.getRingBuffer(i), quadtrees[i], hamts[i], Config.PUBLISH_MAX_DIRTY, Config.PUBLISH_INTERVAL_MS);
             indexers[i].start();
-        }
-
-        boolean useNetty = true;
-        for (String arg : args) {
-            if (arg.equals("--plain")) useNetty = false;
         }
 
         final NettyIngestionServer nettyServer;
@@ -118,25 +127,47 @@ public class WebDemoMain {
         }
         Thread.sleep(200);
 
-        RoadGraph graph = RoadGraph.builder()
-                .addGrid(20, 20, 50.0)
-                .build();
+        RoadGraph graph;
+        List<Zone> zones;
+        if (useOsm) {
+            try (InputStream is = WebDemoMain.class.getResourceAsStream(Config.ROADGRAPH_RESOURCE)) {
+                String json = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+                graph = RoadGraph.loadFromJson(json);
+            }
+            zones = List.of(
+                    new Zone("center", List.of(
+                            new Position(-122.332, 47.6475, 0),
+                            new Position(-122.331, 47.6475, 0),
+                            new Position(-122.331, 47.6485, 0),
+                            new Position(-122.332, 47.6485, 0)
+                    ), new BoundingBox(-122.332, 47.6475, -122.331, 47.6485)),
+                    new Zone("airport", List.of(
+                            new Position(-122.332, 47.6485, 0),
+                            new Position(-122.331, 47.6485, 0),
+                            new Position(-122.331, 47.6495, 0),
+                            new Position(-122.332, 47.6495, 0)
+                    ), new BoundingBox(-122.332, 47.6485, -122.331, 47.6495))
+            );
+        } else {
+            graph = RoadGraph.builder()
+                    .addGrid(20, 20, 50.0)
+                    .build();
+            zones = List.of(
+                    new Zone("center", List.of(
+                            new Position(400, 400, 0),
+                            new Position(600, 400, 0),
+                            new Position(600, 600, 0),
+                            new Position(400, 600, 0)
+                    ), new BoundingBox(400, 400, 600, 600)),
+                    new Zone("airport", List.of(
+                            new Position(800, 800, 0),
+                            new Position(900, 800, 0),
+                            new Position(900, 900, 0),
+                            new Position(800, 900, 0)
+                    ), new BoundingBox(800, 800, 900, 900))
+            );
+        }
         AStarRouter router = new AStarRouter(graph);
-
-        List<Zone> zones = List.of(
-                new Zone("center", List.of(
-                        new Position(400, 400, 0),
-                        new Position(600, 400, 0),
-                        new Position(600, 600, 0),
-                        new Position(400, 600, 0)
-                ), new BoundingBox(400, 400, 600, 600)),
-                new Zone("airport", List.of(
-                        new Position(800, 800, 0),
-                        new Position(900, 800, 0),
-                        new Position(900, 900, 0),
-                        new Position(800, 900, 0)
-                ), new BoundingBox(800, 800, 900, 900))
-        );
 
         GeofenceEngine geofenceEngine = new GeofenceEngine(indexers, zones);
         WebServer webServer = new WebServer(List.of(indexers), router, graph, zones);
