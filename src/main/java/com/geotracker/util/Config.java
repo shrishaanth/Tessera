@@ -2,6 +2,7 @@ package com.geotracker.util;
 
 public class Config {
     public static final int PORT = 9090;
+    public static final int WEB_PORT = 8081;
     public static final int SHARDS = 4;
     public static final int RING_BUFFER_SIZE = 65536;
     public static final int QUADTREE_LEAF_CAPACITY = 32;

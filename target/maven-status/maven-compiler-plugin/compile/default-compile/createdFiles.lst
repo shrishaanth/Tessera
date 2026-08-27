@@ -17,7 +17,9 @@ com\geotracker\util\RingBuffer.class
 com\geotracker\index\HamtIndex.class
 com\geotracker\dashboard\ConsoleDashboard.class
 com\geotracker\ingestion\PositionDecoder.class
+com\geotracker\web\WebServer.class
 com\geotracker\index\NaiveIndex.class
+com\geotracker\WebDemoMain.class
 com\geotracker\index\QuadTreeNode$Branch.class
 com\geotracker\model\ZoneEvent$EventType.class
 com\geotracker\dashboard\SwingDashboard$2.class
