@@ -55,7 +55,7 @@
             display: flex; justify-content: space-between; align-items: center;
             padding: 6px 8px; background: rgba(255,255,255,0.03); border-radius: 4px; margin: 2px 0; font-size: 12px;
         }
-        .vehicle-item button { padding: 2px 8px; font-size: 11px; }
+        .vehicle-item.selected { background: rgba(79, 195, 247, 0.15); border-left: 3px solid #4fc3f7; }
         .zone-item {
             padding: 8px; background: rgba(255,255,255,0.03); border-radius: 4px; margin: 4px 0; font-size: 12px;
         }
@@ -115,13 +115,21 @@
     <div class="sidebar-header">
         <h2>Tessera Live Map</h2>
         <div class="tabs">
-            <button class="tab active" data-tab="tracker">Tracker</button>
+            <button class="tab active" data-tab="vehicles">Vehicles</button>
+            <button class="tab" data-tab="tracker">Tracker</button>
             <button class="tab" data-tab="geofences">Geofences</button>
             <button class="tab" data-tab="routes">Routes</button>
             <button class="tab" data-tab="search">Search</button>
         </div>
     </div>
-    <div class="panel active" id="panel-tracker">
+    <div class="panel active" id="panel-vehicles">
+        <div class="panel-section">
+            <h3>All Vehicles <span id="vehicleTotal" style="color:#aaa;font-weight:normal;">(0)</span></h3>
+            <input type="text" id="vehicleFilter" placeholder="Filter by ID..."/>
+            <div class="vehicle-list" id="allVehicleList"></div>
+        </div>
+    </div>
+    <div class="panel" id="panel-tracker">
         <div class="panel-section">
             <h3>Vehicle Tracker</h3>
             <input type="text" id="trackerSearch" placeholder="Search Vehicle ID..."/>

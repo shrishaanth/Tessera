@@ -23,7 +23,6 @@ let selectedVehicleId = null;
 let routeLayer = L.layerGroup().addTo(map);
 let geofenceLayer = L.layerGroup().addTo(map);
 let searchLayer = L.layerGroup().addTo(map);
-let drawLayer = L.layerGroup().addTo(map);
 let alertLog = [];
 const MAX_ALERTS = 50;
 const TRAIL_LENGTH = 50;
@@ -34,8 +33,8 @@ const ZONE_COLORS = {
 };
 
 let currentDrawControl = null;
-let pendingDrawHandler = null;
 let pendingZonePolygon = null;
+let searchDrawControl = null;
 
 function pointInPolygon(x, y, polygon) {
     let inside = false;
@@ -99,6 +98,34 @@ function updateTrails(positions) {
     }
 }
 
+function renderAllVehicles() {
+    const container = document.getElementById('allVehicleList');
+    const filter = document.getElementById('vehicleFilter').value.trim();
+    container.innerHTML = '';
+
+    const sorted = Array.from(markers.keys()).sort((a, b) => a - b);
+    document.getElementById('vehicleTotal').textContent = `(${sorted.length})`;
+
+    for (const vid of sorted) {
+        if (filter && !String(vid).includes(filter)) continue;
+        const marker = markers.get(vid);
+        const isTracked = trails.has(vid);
+        const isSelected = selectedVehicleId === vid;
+
+        const div = document.createElement('div');
+        div.className = 'vehicle-item' + (isSelected ? ' selected' : '');
+        div.innerHTML = `
+            <span style="color:${isTracked ? '#ff9800' : '#eee'}">#${vid}</span>
+            <div>
+                <button class="btn" onclick="selectVehicle(${vid});map.setView(markers.get(${vid}).getLatLng(),17);">Show</button>
+                <button class="btn" onclick="trackVehicle(${vid})">${isTracked ? 'Tracking' : 'Track'}</button>
+                <button class="btn" onclick="prepareRoute(${vid})">Route</button>
+            </div>
+        `;
+        container.appendChild(div);
+    }
+}
+
 function updateVehicles(positions, zones) {
     const seen = new Set();
     for (const pos of positions) {
@@ -138,6 +165,7 @@ function updateVehicles(positions, zones) {
         }
     }
     document.getElementById('vehicleCount').textContent = markers.size;
+    renderAllVehicles();
 }
 
 async function loadGeofences() {
@@ -156,7 +184,15 @@ async function loadGeofences() {
             if (zoneList) {
                 const div = document.createElement('div');
                 div.className = 'zone-item';
-                div.innerHTML = `<h4>${zone.id}</h4><div>${zone.polygon.length} points</div>`;
+                const monitored = zone.monitoredVehicleIds
+                    ? (zone.monitoredVehicleIds.length > 0 ? zone.monitoredVehicleIds.join(', ') : 'All vehicles')
+                    : 'All vehicles';
+                div.innerHTML = `
+                    <h4>${zone.id}</h4>
+                    <div>${zone.polygon.length} points</div>
+                    <div style="color:#aaa;font-size:11px;">Monitors: ${monitored}</div>
+                    ${zone.zoneId ? `<div class="zone-actions"><button class="btn btn-danger" onclick="deleteZone('${zone.zoneId}')">Delete</button></div>` : ''}
+                `;
                 zoneList.appendChild(div);
             }
         }
@@ -180,6 +216,7 @@ function selectVehicle(id) {
     }
     document.getElementById('routeSelected').textContent = `Selected: Vehicle #${id}`;
     showDetailPanel(id);
+    renderAllVehicles();
 }
 
 async function showDetailPanel(vehicleId) {
@@ -214,7 +251,10 @@ async function requestRoute(destX, destY) {
     const url = `${API_ROUTE}?vehicleId=${selectedVehicleId}&destX=${destX}&destY=${destY}`;
     try {
         const resp = await fetch(url);
-        if (!resp.ok) throw new Error('Route request failed');
+        if (!resp.ok) {
+            const err = await resp.text();
+            throw new Error(err || 'Route request failed');
+        }
         const route = await resp.json();
         if (route.nodes && route.nodes.length > 1) {
             const latlngs = route.nodes.map(p => [p.y, p.x]);
@@ -232,7 +272,7 @@ async function requestRoute(destX, destY) {
         }
     } catch (e) {
         console.error('Route fetch failed:', e);
-        alert('Failed to compute route.');
+        alert('Failed to compute route: ' + e.message);
     }
 }
 
@@ -246,32 +286,15 @@ function startDrawing(mode) {
         } : {
             polygon: { shapeOptions: { color: '#4caf50', weight: 2 } }
         },
-        edit: { featureGroup: drawnItems, remove: true }
+        edit: false
     });
     map.addControl(currentDrawControl);
 
-    pendingDrawHandler = (e) => {
-        if (mode === 'rectangle') {
-            pendingZonePolygon = [
-                { x: e.latlng.lng, y: e.latlng.lat },
-                { x: e.latlng.lng + 0.001, y: e.latlng.lat },
-                { x: e.latlng.lng + 0.001, y: e.latlng.lat + 0.001 },
-                { x: e.latlng.lng, y: e.latlng.lat + 0.001 }
-            ];
-        }
-        document.getElementById('zoneModal').classList.add('active');
-        cancelDrawing();
-    };
-    map.on('draw:created', (e) => {
+    map.once('draw:created', (e) => {
         const layer = e.layer;
         drawnItems.addLayer(layer);
-        if (mode === 'rectangle') {
-            const latlngs = layer.getLatLngs()[0];
-            pendingZonePolygon = latlngs.map(ll => ({ x: ll.lng, y: ll.lat }));
-        } else {
-            const latlngs = layer.getLatLngs()[0];
-            pendingZonePolygon = latlngs.map(ll => ({ x: ll.lng, y: ll.lat }));
-        }
+        const latlngs = layer.getLatLngs()[0];
+        pendingZonePolygon = latlngs.map(ll => ({ x: ll.lng, y: ll.lat }));
         document.getElementById('zoneModal').classList.add('active');
         cancelDrawing();
     });
@@ -281,10 +304,6 @@ function cancelDrawing() {
     if (currentDrawControl) {
         map.removeControl(currentDrawControl);
         currentDrawControl = null;
-    }
-    if (pendingDrawHandler) {
-        map.off('draw:created', pendingDrawHandler);
-        pendingDrawHandler = null;
     }
 }
 
@@ -313,10 +332,10 @@ async function saveZone() {
 let ws = null;
 let wsEvents = null;
 
-function connect() {
+function connectPositions() {
     ws = new WebSocket(WS_URL);
     ws.onopen = () => {
-        console.log('WebSocket connected');
+        console.log('Positions WebSocket connected');
         document.getElementById('statusDot').className = 'status-dot connected';
         document.getElementById('statusText').textContent = 'Live';
     };
@@ -333,12 +352,14 @@ function connect() {
         console.log('Positions WebSocket closed, reconnecting in 2s...');
         document.getElementById('statusDot').className = 'status-dot disconnected';
         document.getElementById('statusText').textContent = 'Reconnecting...';
-        setTimeout(connect, 2000);
+        setTimeout(connectPositions, 2000);
     };
     ws.onerror = (err) => {
-        console.error('WebSocket error:', err);
+        console.error('Positions WebSocket error:', err);
     };
+}
 
+function connectEvents() {
     wsEvents = new WebSocket(WS_URL_EVENTS);
     wsEvents.onopen = () => {
         console.log('Zone events WebSocket connected');
@@ -358,20 +379,56 @@ function connect() {
     };
     wsEvents.onclose = () => {
         console.log('Zone events WebSocket closed, reconnecting in 2s...');
-        setTimeout(connect, 2000);
+        setTimeout(connectEvents, 2000);
     };
     wsEvents.onerror = (err) => {
         console.error('Zone events WebSocket error:', err);
     };
 }
 
+function connect() {
+    connectPositions();
+    connectEvents();
+}
+
 let currentZones = [];
 let routeMode = false;
 let searchMode = false;
 
+function setRouteMode(active) {
+    routeMode = active;
+    if (active) {
+        searchMode = false;
+        document.getElementById('btnDrawSearch').textContent = 'Draw Search Rectangle';
+        document.getElementById('btnDrawSearch').className = 'btn';
+        if (searchDrawControl) {
+            map.removeControl(searchDrawControl);
+            searchDrawControl = null;
+        }
+    }
+    document.getElementById('btnSetDest').textContent = active ? 'Click Map...' : 'Set Destination';
+    document.getElementById('btnSetDest').className = active ? 'btn btn-danger' : 'btn';
+}
+
+function setSearchMode(active) {
+    searchMode = active;
+    if (active) {
+        routeMode = false;
+        setRouteMode(false);
+    }
+    document.getElementById('btnDrawSearch').textContent = active ? 'Click map to set corners...' : 'Draw Search Rectangle';
+    document.getElementById('btnDrawSearch').className = active ? 'btn btn-danger' : 'btn';
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
     currentZones = await loadGeofences();
     connect();
+
+    setInterval(() => {
+        if (selectedVehicleId != null && document.getElementById('detailPanel').classList.contains('active')) {
+            showDetailPanel(selectedVehicleId);
+        }
+    }, 2000);
 
     document.querySelectorAll('.tab').forEach(tab => {
         tab.addEventListener('click', () => {
@@ -398,19 +455,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('btnTrack').addEventListener('click', () => {
         const vid = parseInt(document.getElementById('trackerSearch').value);
         if (isNaN(vid)) return;
-        if (!trails.has(vid)) {
-            const polyline = L.polyline([], { color: '#ff9800', weight: 2, opacity: 0.7 }).addTo(map);
-            trails.set(vid, { polyline, positions: [] });
-        }
-        selectVehicle(vid);
-        const trackedList = document.getElementById('trackedList');
-        if (!document.getElementById('track-' + vid)) {
-            const div = document.createElement('div');
-            div.className = 'vehicle-item';
-            div.id = 'track-' + vid;
-            div.innerHTML = `<span>#${vid}</span><button class="btn btn-danger" onclick="stopTracking(${vid})">Stop</button>`;
-            trackedList.appendChild(div);
-        }
+        trackVehicle(vid);
     });
 
     document.getElementById('btnStopAll').addEventListener('click', () => {
@@ -419,6 +464,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         trails.clear();
         document.getElementById('trackedList').innerHTML = '';
+        renderAllVehicles();
     });
 
     document.getElementById('btnFindVehicle').addEventListener('click', () => {
@@ -434,9 +480,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     document.getElementById('btnSetDest').addEventListener('click', () => {
-        routeMode = !routeMode;
-        document.getElementById('btnSetDest').textContent = routeMode ? 'Click Map...' : 'Set Destination';
-        document.getElementById('btnSetDest').className = routeMode ? 'btn btn-danger' : 'btn';
+        setRouteMode(!routeMode);
     });
 
     document.getElementById('btnClearRoute').addEventListener('click', () => {
@@ -447,18 +491,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('btnDetailTrack').addEventListener('click', () => {
         const vid = selectedVehicleId;
         if (vid == null) return;
-        if (!trails.has(vid)) {
-            const polyline = L.polyline([], { color: '#ff9800', weight: 2, opacity: 0.7 }).addTo(map);
-            trails.set(vid, { polyline, positions: [] });
-        }
-        const trackedList = document.getElementById('trackedList');
-        if (!document.getElementById('track-' + vid)) {
-            const div = document.createElement('div');
-            div.className = 'vehicle-item';
-            div.id = 'track-' + vid;
-            div.innerHTML = `<span>#${vid}</span><button class="btn btn-danger" onclick="stopTracking(${vid})">Stop</button>`;
-            trackedList.appendChild(div);
-        }
+        trackVehicle(vid);
     });
 
     document.getElementById('btnDetailRoute').addEventListener('click', () => {
@@ -466,15 +499,39 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.getElementById('routeVehicleId').value = selectedVehicleId;
         document.getElementById('routeSelected').textContent = `Selected: Vehicle #${selectedVehicleId}`;
         document.querySelector('[data-tab="routes"]').click();
-        routeMode = true;
-        document.getElementById('btnSetDest').textContent = 'Click Map...';
-        document.getElementById('btnSetDest').className = 'btn btn-danger';
+        setRouteMode(true);
     });
 
     document.getElementById('btnDrawSearch').addEventListener('click', () => {
-        searchMode = !searchMode;
-        document.getElementById('btnDrawSearch').textContent = searchMode ? 'Click map to set corners...' : 'Draw Search Rectangle';
-        document.getElementById('btnDrawSearch').className = searchMode ? 'btn btn-danger' : 'btn';
+        if (searchMode) {
+            setSearchMode(false);
+            return;
+        }
+        setSearchMode(true);
+        cancelDrawing();
+        const drawnItems = new L.FeatureGroup();
+        map.addLayer(drawnItems);
+        searchDrawControl = new L.Control.Draw({
+            draw: { rectangle: { shapeOptions: { color: '#4caf50', weight: 2 } } },
+            edit: false
+        });
+        map.addControl(searchDrawControl);
+        map.once('draw:created', (e) => {
+            const layer = e.layer;
+            drawnItems.addLayer(layer);
+            const latlngs = layer.getLatLngs()[0];
+            const bounds = [
+                [latlngs[0].lat, latlngs[0].lng],
+                [latlngs[2].lat, latlngs[2].lng]
+            ];
+            L.rectangle(bounds, { color: '#4caf50', weight: 2, fillOpacity: 0.1 }).addTo(searchLayer);
+            searchVehicles(bounds);
+            setSearchMode(false);
+            if (searchDrawControl) {
+                map.removeControl(searchDrawControl);
+                searchDrawControl = null;
+            }
+        });
     });
 
     document.getElementById('btnClearSearch').addEventListener('click', () => {
@@ -482,24 +539,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.getElementById('searchResults').innerHTML = '';
     });
 
+    document.getElementById('vehicleFilter').addEventListener('input', renderAllVehicles);
+
     map.on('click', (e) => {
         if (routeMode && selectedVehicleId != null) {
             requestRoute(e.latlng.lng, e.latlng.lat);
-            routeMode = false;
-            document.getElementById('btnSetDest').textContent = 'Set Destination';
-            document.getElementById('btnSetDest').className = 'btn';
-        } else if (searchMode) {
-            searchLayer.clearLayers();
-            const latlng = e.latlng;
-            const bounds = [
-                [latlng.lat - 0.002, latlng.lng - 0.002],
-                [latlng.lat + 0.002, latlng.lng + 0.002]
-            ];
-            L.rectangle(bounds, { color: '#4caf50', weight: 2, fillOpacity: 0.1 }).addTo(searchLayer);
-            searchVehicles(bounds);
-            searchMode = false;
-            document.getElementById('btnDrawSearch').textContent = 'Draw Search Rectangle';
-            document.getElementById('btnDrawSearch').className = 'btn';
+            setRouteMode(false);
         }
     });
 });
@@ -511,6 +556,38 @@ window.stopTracking = function(vid) {
     }
     const el = document.getElementById('track-' + vid);
     if (el) el.remove();
+    renderAllVehicles();
+};
+
+window.trackVehicle = function(vid) {
+    if (!trails.has(vid)) {
+        const polyline = L.polyline([], { color: '#ff9800', weight: 2, opacity: 0.7 }).addTo(map);
+        trails.set(vid, { polyline, positions: [] });
+    }
+    selectVehicle(vid);
+    const trackedList = document.getElementById('trackedList');
+    if (!document.getElementById('track-' + vid)) {
+        const div = document.createElement('div');
+        div.className = 'vehicle-item';
+        div.id = 'track-' + vid;
+        div.innerHTML = `<span>#${vid}</span><button class="btn btn-danger" onclick="stopTracking(${vid})">Stop</button>`;
+        trackedList.appendChild(div);
+    }
+    renderAllVehicles();
+};
+
+window.prepareRoute = function(vid) {
+    document.getElementById('routeVehicleId').value = vid;
+    document.getElementById('routeSelected').textContent = `Selected: Vehicle #${vid}`;
+    document.querySelector('[data-tab="routes"]').click();
+    selectVehicle(vid);
+    setRouteMode(true);
+};
+
+window.deleteZone = async function(zoneId) {
+    if (!confirm('Delete this zone?')) return;
+    await fetch(`${API_ZONES}/${zoneId}`, { method: 'DELETE' });
+    loadGeofences();
 };
 
 async function searchVehicles(bounds) {
@@ -530,6 +607,7 @@ async function searchVehicles(bounds) {
         const container = document.getElementById('searchResults');
         container.innerHTML = `<div style="margin-bottom:8px;color:#aaa;">Found ${results.length} vehicles</div>`;
         for (const v of results) {
+            flashMarker(v.vehicleId);
             const div = document.createElement('div');
             div.className = 'vehicle-item';
             div.innerHTML = `<span>#${v.vehicleId} (${v.y.toFixed(4)}, ${v.x.toFixed(4)})</span>

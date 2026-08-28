@@ -69,17 +69,19 @@ public class TrajectorySimulator {
 
     public synchronized List<PositionUpdate> tick() {
         simTime += dt * timeScale;
-        List<PositionUpdate> updates = new ArrayList<>();
+        if (simTime * 1000.0 > Long.MAX_VALUE / 2) simTime = 0;
         long simMs = (long) (simTime * 1000.0);
+        List<PositionUpdate> updates = new ArrayList<>();
 
         for (int i = 0; i < vehicleCount; i++) {
             long vid = i;
-            List<TrajectoryRecord> traj = trajectories.get(vid % (trajectories.size()));
+            List<TrajectoryRecord> traj = trajectories.get(vid % trajectories.size());
             if (traj == null || traj.isEmpty()) continue;
 
-            int idx = findClosestIndex(traj, simMs);
+            long maxTs = traj.get(traj.size() - 1).timestampMs();
+            long loopedSimMs = simMs % (maxTs + 1);
+            int idx = findClosestIndex(traj, loopedSimMs);
             if (idx < 0) idx = 0;
-            if (idx >= traj.size()) idx = traj.size() - 1;
 
             TrajectoryRecord rec = traj.get(idx);
             updates.add(new PositionUpdate(vid, rec.lng(), rec.lat(), System.currentTimeMillis()));

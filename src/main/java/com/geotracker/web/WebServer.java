@@ -158,7 +158,18 @@ public class WebServer {
                     return;
                 }
 
-                RouteResult routeResult = router.findRoute(vehicleId, startPos, destX, destY);
+                RoadGraph.Node startNode = graph.findNearestNode(startPos.x(), startPos.y());
+                RoadGraph.Node destNode = graph.findNearestNode(destX, destY);
+                if (startNode == null || destNode == null) {
+                    ctx.status(400).result("Start or destination is not near any road");
+                    return;
+                }
+                if (startNode.id() == destNode.id()) {
+                    ctx.status(400).result("Vehicle is already at destination");
+                    return;
+                }
+
+                RouteResult routeResult = router.findRoute(vehicleId, startNode.id(), destNode.id());
                 List<Map<String, Object>> nodes = new ArrayList<>();
                 for (Long nodeId : routeResult.nodeIds()) {
                     RoadGraph.Node node = graph.getNode(nodeId);
@@ -169,11 +180,28 @@ public class WebServer {
                     nodeMap.put("y", node.y());
                     nodes.add(nodeMap);
                 }
+
+                double speedKmh = 5.0;
+                RingBuffer<Position> history = positionHistory.computeIfAbsent(vehicleId, k -> new RingBuffer<>(5));
+                history.put(startPos);
+                if (history.size() >= 2) {
+                    Position newest = history.get(history.size() - 1);
+                    Position oldest = history.get(0);
+                    double dtSec = (newest.timestamp() - oldest.timestamp()) / 1000.0;
+                    if (dtSec > 0) {
+                        double distM = GeoUtils.haversineMeters(oldest.y(), oldest.x(), newest.y(), newest.x());
+                        speedKmh = (distM / dtSec) * 3.6;
+                        if (speedKmh < 0.5) speedKmh = 5.0;
+                    }
+                }
+                double speedMps = speedKmh / 3.6;
+                double estimatedSeconds = speedMps > 0.1 ? routeResult.totalCost() / speedMps : routeResult.totalCost() / 5.0;
+
                 Map<String, Object> response = new LinkedHashMap<>();
                 response.put("vehicleId", routeResult.vehicleId());
                 response.put("totalCost", routeResult.totalCost());
                 response.put("distanceMeters", routeResult.totalCost());
-                response.put("estimatedSeconds", routeResult.totalCost() / 5.0);
+                response.put("estimatedSeconds", estimatedSeconds);
                 response.put("nodes", nodes);
                 ctx.json(response);
             } catch (NumberFormatException e) {
@@ -209,9 +237,12 @@ public class WebServer {
                 if (dtSec > 0) {
                     double distM = GeoUtils.haversineMeters(oldest.y(), oldest.x(), newest.y(), newest.x());
                     speedKmh = (distM / dtSec) * 3.6;
-                    double dx = newest.x() - oldest.x();
-                    double dy = newest.y() - oldest.y();
-                    heading = Math.toDegrees(Math.atan2(dx, dy));
+                    double lat1 = Math.toRadians(oldest.y());
+                    double lat2 = Math.toRadians(newest.y());
+                    double dLon = Math.toRadians(newest.x() - oldest.x());
+                    double y = Math.sin(dLon) * Math.cos(lat2);
+                    double x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
+                    heading = Math.toDegrees(Math.atan2(y, x));
                     if (heading < 0) heading += 360;
                     status = speedKmh > 0.5 ? "moving" : "idle";
                 }

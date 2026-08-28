@@ -93,13 +93,14 @@ public class AStarRouter {
             } else {
                 double dx = node.x() - x;
                 double dy = node.y() - y;
-                d = dx * dx + dy * dy;
+                d = Math.sqrt(dx * dx + dy * dy);
             }
             if (d < bestDist) {
                 bestDist = d;
                 best = node;
             }
         }
+        if (bestDist > 100) return null;
         return best;
     }
 

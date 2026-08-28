@@ -36,6 +36,21 @@ public class RoadGraph {
         return nodes.values();
     }
 
+    public Node findNearestNode(double x, double y) {
+        Node best = null;
+        double bestDist = Double.MAX_VALUE;
+        for (Node node : nodes.values()) {
+            double dx = node.x() - x;
+            double dy = node.y() - y;
+            double d = Math.sqrt(dx * dx + dy * dy);
+            if (d < bestDist) {
+                bestDist = d;
+                best = node;
+            }
+        }
+        return bestDist <= 100 ? best : null;
+    }
+
     public static RoadGridBuilder builder() {
         return new RoadGridBuilder();
     }
