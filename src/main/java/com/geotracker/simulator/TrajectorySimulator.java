@@ -8,7 +8,6 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
-import java.util.concurrent.CopyOnWriteArrayList;
 
 public class TrajectorySimulator {
     private static final int MAX_TRAIL = 50;
@@ -16,8 +15,9 @@ public class TrajectorySimulator {
     private final String csvResourcePath;
     private final double timeScale;
     private final int vehicleCount;
-    private final Map<Long, List<TrajectoryRecord>> trajectories = new HashMap<>();
-    private final Map<Long, Integer> cursors = new HashMap<>();
+    // vehicle_trips.json (src/main/resources/data/vehicle_trips.json) contains precomputed
+    // node-ID paths for each vehicle and is reserved for future trip-based routing use.
+    private final List<List<TrajectoryRecord>> trajectoryList = new ArrayList<>();
     private double simTime = 0.0;
     private final double dt;
 
@@ -42,7 +42,7 @@ public class TrajectorySimulator {
                 String vid = parts[0];
                 if (!vid.equals(currentVid)) {
                     if (currentVid != null) {
-                        trajectories.put(Long.parseLong(currentVid), currentList);
+                        trajectoryList.add(currentList);
                     }
                     currentVid = vid;
                     currentList = new ArrayList<>();
@@ -54,16 +54,10 @@ public class TrajectorySimulator {
                 currentList.add(new TrajectoryRecord(ts, lat, lng, speed));
             }
             if (currentVid != null) {
-                trajectories.put(Long.parseLong(currentVid), currentList);
+                trajectoryList.add(currentList);
             }
         } catch (IOException e) {
             throw new IllegalStateException("Failed to load trajectories from " + csvResourcePath, e);
-        }
-
-        long maxVid = trajectories.keySet().stream().mapToLong(Long::longValue).max().orElse(0);
-        for (int i = 0; i < vehicleCount; i++) {
-            long vid = i % (maxVid + 1);
-            cursors.put((long) i, 0);
         }
     }
 
@@ -75,7 +69,7 @@ public class TrajectorySimulator {
 
         for (int i = 0; i < vehicleCount; i++) {
             long vid = i;
-            List<TrajectoryRecord> traj = trajectories.get(vid % trajectories.size());
+            List<TrajectoryRecord> traj = trajectoryList.get((int)(vid % trajectoryList.size()));
             if (traj == null || traj.isEmpty()) continue;
 
             long maxTs = traj.get(traj.size() - 1).timestampMs();
@@ -109,10 +103,5 @@ public class TrajectorySimulator {
 
     public synchronized void reset() {
         simTime = 0.0;
-        cursors.clear();
-        long maxVid = trajectories.keySet().stream().mapToLong(Long::longValue).max().orElse(0);
-        for (int i = 0; i < vehicleCount; i++) {
-            cursors.put((long) i, 0);
-        }
     }
 }

@@ -31,6 +31,8 @@ public class GeofenceEngine {
     private final Map<String, Set<Long>> previousContained = new ConcurrentHashMap<>();
     private final List<Zone> zones;
     private final ConcurrentHashMap<String, UserZone> userZones = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Long> lastEventTime = new ConcurrentHashMap<>();
+    private static final long EVENT_COOLDOWN_MS = 3000;
 
     public GeofenceEngine(IndexerThread[] indexers, List<Zone> zones) {
         this.indexers = indexers;
@@ -109,6 +111,7 @@ public class GeofenceEngine {
             }
         }
         Set<Long> currentContained = new HashSet<>();
+        long now = System.currentTimeMillis();
         for (long vehicleId : candidates) {
             if (!monitoredIds.isEmpty() && !monitoredIds.contains(vehicleId)) continue;
             Position pos = null;
@@ -129,17 +132,27 @@ public class GeofenceEngine {
             if (pos == null) continue;
             if (RayCaster.contains(pos, polygon)) {
                 currentContained.add(vehicleId);
-                Set<Long> previous = previousContained.getOrDefault(zoneId, new HashSet<>());
+                Set<Long> previous = previousContained.getOrDefault(zoneId, Collections.emptySet());
                 if (onEnter && !previous.contains(vehicleId)) {
-                    events.add(new ZoneEvent(vehicleId, zoneId, ZoneEvent.EventType.ENTER, System.currentTimeMillis()));
+                    String key = vehicleId + ":" + zoneId + ":enter";
+                    long last = lastEventTime.getOrDefault(key, 0L);
+                    if (now - last >= EVENT_COOLDOWN_MS) {
+                        events.add(new ZoneEvent(vehicleId, zoneId, ZoneEvent.EventType.ENTER, now));
+                        lastEventTime.put(key, now);
+                    }
                 }
             }
         }
-        Set<Long> previous = previousContained.getOrDefault(zoneId, new HashSet<>());
+        Set<Long> previous = previousContained.getOrDefault(zoneId, Collections.emptySet());
         if (onExit) {
             for (long vehicleId : previous) {
                 if (!currentContained.contains(vehicleId)) {
-                    events.add(new ZoneEvent(vehicleId, zoneId, ZoneEvent.EventType.EXIT, System.currentTimeMillis()));
+                    String key = vehicleId + ":" + zoneId + ":exit";
+                    long last = lastEventTime.getOrDefault(key, 0L);
+                    if (now - last >= EVENT_COOLDOWN_MS) {
+                        events.add(new ZoneEvent(vehicleId, zoneId, ZoneEvent.EventType.EXIT, now));
+                        lastEventTime.put(key, now);
+                    }
                 }
             }
         }

@@ -39,10 +39,16 @@ public class RoadGraph {
     public Node findNearestNode(double x, double y) {
         Node best = null;
         double bestDist = Double.MAX_VALUE;
+        boolean isLatLng = (x >= -180 && x <= 180 && y >= -90 && y <= 90);
         for (Node node : nodes.values()) {
-            double dx = node.x() - x;
-            double dy = node.y() - y;
-            double d = Math.sqrt(dx * dx + dy * dy);
+            double d;
+            if (isLatLng) {
+                d = GeoUtils.haversineMeters(y, x, node.y(), node.x());
+            } else {
+                double dx = node.x() - x;
+                double dy = node.y() - y;
+                d = Math.sqrt(dx * dx + dy * dy);
+            }
             if (d < bestDist) {
                 bestDist = d;
                 best = node;

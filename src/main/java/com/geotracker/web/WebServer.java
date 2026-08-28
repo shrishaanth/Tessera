@@ -183,7 +183,6 @@ public class WebServer {
 
                 double speedKmh = 5.0;
                 RingBuffer<Position> history = positionHistory.computeIfAbsent(vehicleId, k -> new RingBuffer<>(5));
-                history.put(startPos);
                 if (history.size() >= 2) {
                     Position newest = history.get(history.size() - 1);
                     Position oldest = history.get(0);
@@ -225,7 +224,6 @@ public class WebServer {
             }
 
             RingBuffer<Position> history = positionHistory.computeIfAbsent(vehicleId, k -> new RingBuffer<>(5));
-            history.put(pos);
 
             double speedKmh = 0.0;
             double heading = 0.0;
@@ -330,6 +328,7 @@ public class WebServer {
                     for (Long id : ids) {
                         Position pos = hamt.get(id);
                         if (pos == null) continue;
+                        positionHistory.computeIfAbsent(id, k -> new RingBuffer<>(5)).put(pos);
                         Map<String, Object> map = positionToMap(id, pos);
                         allPositions.add(map);
                     }
