@@ -1,6 +1,9 @@
 package com.geotracker.web;
 
 import com.geotracker.geofence.GeofenceEngine;
+import com.geotracker.geofence.GeofenceEngine.UserZone;
+import com.geotracker.geofence.GeofenceEngine.Zone;
+import com.geotracker.geofence.RayCaster;
 import com.geotracker.index.CowQuadtree;
 import com.geotracker.index.HamtIndex;
 import com.geotracker.index.IndexerThread;
@@ -8,10 +11,15 @@ import com.geotracker.index.SpatialSnapshot;
 import com.geotracker.model.BoundingBox;
 import com.geotracker.model.Position;
 import com.geotracker.model.RouteResult;
+import com.geotracker.model.SearchRequest;
+import com.geotracker.model.VehicleDetail;
 import com.geotracker.model.ZoneEvent;
+import com.geotracker.model.ZoneRequest;
 import com.geotracker.routing.AStarRouter;
+import com.geotracker.routing.GeoUtils;
 import com.geotracker.routing.RoadGraph;
 import com.geotracker.util.Config;
+import com.geotracker.util.RingBuffer;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -29,15 +37,18 @@ public class WebServer {
     private final List<IndexerThread> indexers;
     private final AStarRouter router;
     private final RoadGraph graph;
-    private final List<GeofenceEngine.Zone> zones;
+    private final List<Zone> zones;
+    private final GeofenceEngine geofenceEngine;
     private final List<WsContext> wsClients = new CopyOnWriteArrayList<>();
     private final List<WsContext> eventClients = new CopyOnWriteArrayList<>();
+    private final ConcurrentHashMap<Long, RingBuffer<Position>> positionHistory = new ConcurrentHashMap<>();
 
-    public WebServer(List<IndexerThread> indexers, AStarRouter router, RoadGraph graph, List<GeofenceEngine.Zone> zones) {
+    public WebServer(List<IndexerThread> indexers, AStarRouter router, RoadGraph graph, List<Zone> zones, GeofenceEngine geofenceEngine) {
         this.indexers = indexers;
         this.router = router;
         this.graph = graph;
         this.zones = zones;
+        this.geofenceEngine = geofenceEngine;
         this.mapper = new ObjectMapper();
         this.app = Javalin.create().start(Config.WEB_PORT);
         this.scheduler = Executors.newSingleThreadScheduledExecutor();
@@ -48,49 +59,77 @@ public class WebServer {
 
     private void configureRoutes() {
         app.ws("/ws/positions", ws -> {
-            ws.onConnect(ctx -> {
-                wsClients.add(ctx);
-            });
-            ws.onClose(ctx -> {
-                wsClients.remove(ctx);
-            });
-            ws.onError(ctx -> {
-                wsClients.remove(ctx);
-            });
+            ws.onConnect(ctx -> wsClients.add(ctx));
+            ws.onClose(ctx -> wsClients.remove(ctx));
+            ws.onError(ctx -> wsClients.remove(ctx));
         });
 
         app.ws("/ws/events", ws -> {
-            ws.onConnect(ctx -> {
-                eventClients.add(ctx);
-            });
-            ws.onClose(ctx -> {
-                eventClients.remove(ctx);
-            });
-            ws.onError(ctx -> {
-                eventClients.remove(ctx);
-            });
+            ws.onConnect(ctx -> eventClients.add(ctx));
+            ws.onClose(ctx -> eventClients.remove(ctx));
+            ws.onError(ctx -> eventClients.remove(ctx));
         });
 
         app.get("/api/geofences", ctx -> {
-            List<Map<String, Object>> result = zones.stream().map(zone -> {
-                Map<String, Object> map = new LinkedHashMap<>();
-                map.put("id", zone.id());
-                map.put("bbox", Map.of(
-                        "minX", zone.bbox().minX(),
-                        "minY", zone.bbox().minY(),
-                        "maxX", zone.bbox().maxX(),
-                        "maxY", zone.bbox().maxY()
-                ));
-                List<Map<String, Double>> polygon = zone.polygon().stream().map(p -> {
-                    Map<String, Double> m = new LinkedHashMap<>();
-                    m.put("x", p.x());
-                    m.put("y", p.y());
-                    return m;
-                }).collect(Collectors.toList());
-                map.put("polygon", polygon);
-                return map;
-            }).collect(Collectors.toList());
+            List<Map<String, Object>> result = new ArrayList<>();
+            for (Zone zone : zones) {
+                result.add(zoneToMap(zone.id(), zone.polygon(), zone.bbox()));
+            }
+            for (UserZone zone : geofenceEngine.getAllUserZones()) {
+                result.add(zoneToMap(zone.zoneId(), zone.polygon(), zone.bbox()));
+            }
             ctx.json(result);
+        });
+
+        app.post("/api/zones", ctx -> {
+            ZoneRequest req = ctx.bodyAsClass(ZoneRequest.class);
+            String zoneId = geofenceEngine.createZone(req.name(), req.polygon(), req.vehicleIds(), req.alertOnEnter(), req.alertOnExit());
+            ctx.json(Map.of("zoneId", zoneId));
+        });
+
+        app.delete("/api/zones/{id}", ctx -> {
+            geofenceEngine.deleteZone(ctx.pathParam("id"));
+            ctx.status(204);
+        });
+
+        app.put("/api/zones/{id}", ctx -> {
+            String zoneId = ctx.pathParam("id");
+            ZoneRequest req = ctx.bodyAsClass(ZoneRequest.class);
+            geofenceEngine.updateZone(zoneId, req.name(), req.polygon(), req.vehicleIds());
+            ctx.status(200);
+        });
+
+        app.patch("/api/zones/{id}/vehicles", ctx -> {
+            String zoneId = ctx.pathParam("id");
+            var body = ctx.bodyAsClass(Map.class);
+            @SuppressWarnings("unchecked")
+            Set<Long> vehicleIds = new HashSet<>((List<Long>) body.getOrDefault("vehicleIds", List.of()));
+            UserZone zone = geofenceEngine.getUserZone(zoneId);
+            if (zone == null) {
+                ctx.status(404).result("Zone not found");
+                return;
+            }
+            geofenceEngine.updateZone(zoneId, zone.name(), zone.polygon(), vehicleIds);
+            ctx.status(200);
+        });
+
+        app.post("/api/vehicles/search", ctx -> {
+            SearchRequest req = ctx.bodyAsClass(SearchRequest.class);
+            BoundingBox bbox = req.bbox();
+            Set<Long> filterIds = req.vehicleIds();
+            List<Map<String, Object>> results = new ArrayList<>();
+            for (IndexerThread indexer : indexers) {
+                SpatialSnapshot snapshot = indexer.getPublishedSnapshot();
+                if (snapshot == null) continue;
+                List<Long> ids = snapshot.quadtree().rangeQuery(bbox);
+                for (Long id : ids) {
+                    if (!filterIds.isEmpty() && !filterIds.contains(id)) continue;
+                    Position pos = snapshot.hamt().get(id);
+                    if (pos == null) continue;
+                    results.add(positionToMap(id, pos));
+                }
+            }
+            ctx.json(results);
         });
 
         app.get("/api/route", ctx -> {
@@ -133,11 +172,61 @@ public class WebServer {
                 Map<String, Object> response = new LinkedHashMap<>();
                 response.put("vehicleId", routeResult.vehicleId());
                 response.put("totalCost", routeResult.totalCost());
+                response.put("distanceMeters", routeResult.totalCost());
+                response.put("estimatedSeconds", routeResult.totalCost() / 5.0);
                 response.put("nodes", nodes);
                 ctx.json(response);
             } catch (NumberFormatException e) {
                 ctx.status(400).result("Invalid parameter format");
             }
+        });
+
+        app.get("/api/vehicles/{id}", ctx -> {
+            long vehicleId = Long.parseLong(ctx.pathParam("id"));
+            Position pos = null;
+            for (IndexerThread indexer : indexers) {
+                SpatialSnapshot snapshot = indexer.getPublishedSnapshot();
+                if (snapshot != null) {
+                    pos = snapshot.hamt().get(vehicleId);
+                    if (pos != null) break;
+                }
+            }
+            if (pos == null) {
+                ctx.status(404).result("Vehicle not found");
+                return;
+            }
+
+            RingBuffer<Position> history = positionHistory.computeIfAbsent(vehicleId, k -> new RingBuffer<>(5));
+            history.put(pos);
+
+            double speedKmh = 0.0;
+            double heading = 0.0;
+            String status = "unknown";
+            if (history.size() >= 2) {
+                Position newest = history.get(history.size() - 1);
+                Position oldest = history.get(0);
+                double dtSec = (newest.timestamp() - oldest.timestamp()) / 1000.0;
+                if (dtSec > 0) {
+                    double distM = GeoUtils.haversineMeters(oldest.y(), oldest.x(), newest.y(), newest.x());
+                    speedKmh = (distM / dtSec) * 3.6;
+                    double dx = newest.x() - oldest.x();
+                    double dy = newest.y() - oldest.y();
+                    heading = Math.toDegrees(Math.atan2(dx, dy));
+                    if (heading < 0) heading += 360;
+                    status = speedKmh > 0.5 ? "moving" : "idle";
+                }
+            }
+
+            List<String> zoneList = new ArrayList<>();
+            for (Zone zone : zones) {
+                if (RayCaster.contains(pos, zone.polygon())) zoneList.add(zone.id());
+            }
+            for (UserZone zone : geofenceEngine.getAllUserZones()) {
+                if (RayCaster.contains(pos, zone.polygon())) zoneList.add(zone.zoneId());
+            }
+
+            VehicleDetail detail = new VehicleDetail(vehicleId, pos, speedKmh, heading, zoneList, pos.timestamp(), status);
+            ctx.json(detail);
         });
 
         app.get("/", ctx -> {
@@ -161,6 +250,25 @@ public class WebServer {
                 ctx.status(500).result("Failed to load app.js");
             }
         });
+    }
+
+    private Map<String, Object> zoneToMap(String id, List<Position> polygon, BoundingBox bbox) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("id", id);
+        map.put("bbox", Map.of(
+                "minX", bbox.minX(),
+                "minY", bbox.minY(),
+                "maxX", bbox.maxX(),
+                "maxY", bbox.maxY()
+        ));
+        List<Map<String, Double>> poly = polygon.stream().map(p -> {
+            Map<String, Double> m = new LinkedHashMap<>();
+            m.put("x", p.x());
+            m.put("y", p.y());
+            return m;
+        }).collect(Collectors.toList());
+        map.put("polygon", poly);
+        return map;
     }
 
     static Map<String, Object> positionToMap(long vehicleId, Position pos) {

@@ -5,7 +5,7 @@ import com.geotracker.model.PositionUpdate;
 import com.geotracker.util.RingBuffer;
 
 public class IndexerThread extends Thread {
-    private final RingBuffer ringBuffer;
+    private final RingBuffer<PositionUpdate> ringBuffer;
     private final CowQuadtree quadtree;
     private final HamtIndex hamt;
     private volatile boolean running = true;
@@ -17,7 +17,7 @@ public class IndexerThread extends Thread {
     private long lastPublishTime = System.currentTimeMillis();
     private long updatesProcessed = 0;
 
-    public IndexerThread(int shardId, RingBuffer ringBuffer, CowQuadtree quadtree, HamtIndex hamt, int maxDirty, long publishIntervalMs) {
+    public IndexerThread(int shardId, RingBuffer<PositionUpdate> ringBuffer, CowQuadtree quadtree, HamtIndex hamt, int maxDirty, long publishIntervalMs) {
         this.ringBuffer = ringBuffer;
         this.quadtree = quadtree;
         this.hamt = hamt;

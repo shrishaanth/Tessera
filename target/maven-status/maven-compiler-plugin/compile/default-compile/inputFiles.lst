@@ -4,10 +4,13 @@ C:\Users\shris\Desktop\Projects\Geospatial\Tessera\src\main\java\com\geotracker\
 C:\Users\shris\Desktop\Projects\Geospatial\Tessera\src\main\java\com\geotracker\index\NaiveIndex.java
 C:\Users\shris\Desktop\Projects\Geospatial\Tessera\src\main\java\com\geotracker\benchmark\LatencyRecorder.java
 C:\Users\shris\Desktop\Projects\Geospatial\Tessera\src\main\java\com\geotracker\ingestion\NettyIngestionServer.java
+C:\Users\shris\Desktop\Projects\Geospatial\Tessera\src\main\java\com\geotracker\model\VehicleDetail.java
 C:\Users\shris\Desktop\Projects\Geospatial\Tessera\src\main\java\com\geotracker\simulator\VehicleSpawnHelper.java
 C:\Users\shris\Desktop\Projects\Geospatial\Tessera\src\main\java\com\geotracker\index\GridIndex.java
 C:\Users\shris\Desktop\Projects\Geospatial\Tessera\src\main\java\com\geotracker\index\QuadTreeNode.java
 C:\Users\shris\Desktop\Projects\Geospatial\Tessera\src\main\java\com\geotracker\routing\AStarRouter.java
+C:\Users\shris\Desktop\Projects\Geospatial\Tessera\src\main\java\com\geotracker\model\SearchRequest.java
+C:\Users\shris\Desktop\Projects\Geospatial\Tessera\src\main\java\com\geotracker\model\ZoneRequest.java
 C:\Users\shris\Desktop\Projects\Geospatial\Tessera\src\main\java\com\geotracker\util\RingBuffer.java
 C:\Users\shris\Desktop\Projects\Geospatial\Tessera\src\main\java\com\geotracker\simulator\SimulatedVehicle.java
 C:\Users\shris\Desktop\Projects\Geospatial\Tessera\src\main\java\com\geotracker\simulator\SimulatorMain.java
@@ -20,6 +23,7 @@ C:\Users\shris\Desktop\Projects\Geospatial\Tessera\src\main\java\com\geotracker\
 C:\Users\shris\Desktop\Projects\Geospatial\Tessera\src\main\java\com\geotracker\dashboard\ConsoleDashboard.java
 C:\Users\shris\Desktop\Projects\Geospatial\Tessera\src\main\java\com\geotracker\geofence\RayCaster.java
 C:\Users\shris\Desktop\Projects\Geospatial\Tessera\src\main\java\com\geotracker\benchmark\BenchmarkHarness.java
+C:\Users\shris\Desktop\Projects\Geospatial\Tessera\src\main\java\com\geotracker\simulator\TrajectorySimulator.java
 C:\Users\shris\Desktop\Projects\Geospatial\Tessera\src\main\java\com\geotracker\dashboard\SwingDashboard.java
 C:\Users\shris\Desktop\Projects\Geospatial\Tessera\src\main\java\com\geotracker\ingestion\IngestionServer.java
 C:\Users\shris\Desktop\Projects\Geospatial\Tessera\src\main\java\com\geotracker\web\WebServer.java

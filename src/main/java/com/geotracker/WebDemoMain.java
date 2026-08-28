@@ -13,6 +13,7 @@ import com.geotracker.model.Position;
 import com.geotracker.routing.AStarRouter;
 import com.geotracker.routing.RoadGraph;
 import com.geotracker.simulator.SimulatorClient;
+import com.geotracker.simulator.TrajectorySimulator;
 import com.geotracker.simulator.VehicleSimulator;
 import com.geotracker.util.Config;
 import com.geotracker.web.WebServer;
@@ -26,21 +27,85 @@ import java.util.Random;
 public class WebDemoMain {
     public static void main(String[] args) throws Exception {
         int shards = Config.SHARDS;
-        int vehicleCount = Config.DEMO_VEHICLE_COUNT;
-
+        boolean useTrajectory = true;
+        boolean useOsm = false;
         boolean useNetty = true;
-        boolean useOsm = true;
         for (String arg : args) {
             if (arg.equals("--plain")) useNetty = false;
-            if (arg.equals("--grid")) useOsm = false;
+            if (arg.equals("--osm")) useOsm = true;
+            if (arg.equals("--grid")) { useOsm = false; useTrajectory = false; }
+            if (arg.equals("--trajectory")) useTrajectory = true;
         }
 
         BoundingBox bounds;
-        if (useOsm) {
+        RoadGraph graph;
+        List<Zone> zones;
+        int vehicleCount;
+
+        if (useTrajectory) {
             bounds = new BoundingBox(Config.AREA_MIN_LNG, Config.AREA_MIN_LAT, Config.AREA_MAX_LNG, Config.AREA_MAX_LAT);
+            try (InputStream is = WebDemoMain.class.getResourceAsStream(Config.GRID_ROADGRAPH_RESOURCE)) {
+                String json = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+                graph = RoadGraph.loadFromJson(json);
+            }
+            zones = List.of(
+                    new Zone("center", List.of(
+                            new Position(-122.332, 47.6475, 0),
+                            new Position(-122.331, 47.6475, 0),
+                            new Position(-122.331, 47.6485, 0),
+                            new Position(-122.332, 47.6485, 0)
+                    ), new BoundingBox(-122.332, 47.6475, -122.331, 47.6485)),
+                    new Zone("airport", List.of(
+                            new Position(-122.332, 47.6485, 0),
+                            new Position(-122.331, 47.6485, 0),
+                            new Position(-122.331, 47.6495, 0),
+                            new Position(-122.332, 47.6495, 0)
+                    ), new BoundingBox(-122.332, 47.6485, -122.331, 47.6495))
+            );
+            vehicleCount = 20;
+        } else if (useOsm) {
+            bounds = new BoundingBox(Config.AREA_MIN_LNG, Config.AREA_MIN_LAT, Config.AREA_MAX_LNG, Config.AREA_MAX_LAT);
+            try (InputStream is = WebDemoMain.class.getResourceAsStream(Config.ROADGRAPH_RESOURCE)) {
+                String json = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+                graph = RoadGraph.loadFromJson(json);
+            }
+            zones = List.of(
+                    new Zone("center", List.of(
+                            new Position(-122.332, 47.6475, 0),
+                            new Position(-122.331, 47.6475, 0),
+                            new Position(-122.331, 47.6485, 0),
+                            new Position(-122.332, 47.6485, 0)
+                    ), new BoundingBox(-122.332, 47.6475, -122.331, 47.6485)),
+                    new Zone("airport", List.of(
+                            new Position(-122.332, 47.6485, 0),
+                            new Position(-122.331, 47.6485, 0),
+                            new Position(-122.331, 47.6495, 0),
+                            new Position(-122.332, 47.6495, 0)
+                    ), new BoundingBox(-122.332, 47.6485, -122.331, 47.6495))
+            );
+            vehicleCount = Config.DEMO_VEHICLE_COUNT;
         } else {
             bounds = new BoundingBox(Config.MAP_MIN_X, Config.MAP_MIN_Y, Config.MAP_MAX_X, Config.MAP_MAX_Y);
+            graph = RoadGraph.builder()
+                    .addGrid(20, 20, 50.0)
+                    .build();
+            zones = List.of(
+                    new Zone("center", List.of(
+                            new Position(400, 400, 0),
+                            new Position(600, 400, 0),
+                            new Position(600, 600, 0),
+                            new Position(400, 600, 0)
+                    ), new BoundingBox(400, 400, 600, 600)),
+                    new Zone("airport", List.of(
+                            new Position(800, 800, 0),
+                            new Position(900, 800, 0),
+                            new Position(900, 900, 0),
+                            new Position(800, 900, 0)
+                    ), new BoundingBox(800, 800, 900, 900))
+            );
+            vehicleCount = Config.DEMO_VEHICLE_COUNT;
         }
+        AStarRouter router = new AStarRouter(graph);
 
         ShardRouter shardRouter = new ShardRouter(shards, Config.RING_BUFFER_SIZE);
         CowQuadtree[] quadtrees = new CowQuadtree[shards];
@@ -127,67 +192,41 @@ public class WebDemoMain {
         }
         Thread.sleep(200);
 
-        RoadGraph graph;
-        List<Zone> zones;
-        if (useOsm) {
-            try (InputStream is = WebDemoMain.class.getResourceAsStream(Config.ROADGRAPH_RESOURCE)) {
-                String json = new String(is.readAllBytes(), StandardCharsets.UTF_8);
-                graph = RoadGraph.loadFromJson(json);
-            }
-            zones = List.of(
-                    new Zone("center", List.of(
-                            new Position(-122.332, 47.6475, 0),
-                            new Position(-122.331, 47.6475, 0),
-                            new Position(-122.331, 47.6485, 0),
-                            new Position(-122.332, 47.6485, 0)
-                    ), new BoundingBox(-122.332, 47.6475, -122.331, 47.6485)),
-                    new Zone("airport", List.of(
-                            new Position(-122.332, 47.6485, 0),
-                            new Position(-122.331, 47.6485, 0),
-                            new Position(-122.331, 47.6495, 0),
-                            new Position(-122.332, 47.6495, 0)
-                    ), new BoundingBox(-122.332, 47.6485, -122.331, 47.6495))
-            );
-        } else {
-            graph = RoadGraph.builder()
-                    .addGrid(20, 20, 50.0)
-                    .build();
-            zones = List.of(
-                    new Zone("center", List.of(
-                            new Position(400, 400, 0),
-                            new Position(600, 400, 0),
-                            new Position(600, 600, 0),
-                            new Position(400, 600, 0)
-                    ), new BoundingBox(400, 400, 600, 600)),
-                    new Zone("airport", List.of(
-                            new Position(800, 800, 0),
-                            new Position(900, 800, 0),
-                            new Position(900, 900, 0),
-                            new Position(800, 900, 0)
-                    ), new BoundingBox(800, 800, 900, 900))
-            );
-        }
-        AStarRouter router = new AStarRouter(graph);
-
         GeofenceEngine geofenceEngine = new GeofenceEngine(indexers, zones);
-        WebServer webServer = new WebServer(List.of(indexers), router, graph, zones);
+        WebServer webServer = new WebServer(List.of(indexers), router, graph, zones, geofenceEngine);
+
+        final boolean useTrajectoryFinal = useTrajectory;
 
         SimulatorClient[] clientHolder = new SimulatorClient[1];
         if (true) {
-            VehicleSimulator simulator = new VehicleSimulator(graph, vehicleCount, 200.0, 1.0 / Config.UPDATE_RATE_HZ, Config.SEED);
             SimulatorClient client = new SimulatorClient("localhost", Config.PORT);
             client.connect();
             clientHolder[0] = client;
 
             new Thread(() -> {
-                while (true) {
-                    try {
-                        var updates = simulator.tick();
-                        client.sendBatch(updates);
-                        Thread.sleep((long)(1000.0 / Config.UPDATE_RATE_HZ));
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                        break;
+                if (useTrajectoryFinal) {
+                    TrajectorySimulator simulator = new TrajectorySimulator(Config.TRAJECTORY_RESOURCE, vehicleCount, 1.0, 1.0 / Config.UPDATE_RATE_HZ);
+                    while (true) {
+                        try {
+                            var updates = simulator.tick();
+                            client.sendBatch(updates);
+                            Thread.sleep((long)(1000.0 / Config.UPDATE_RATE_HZ));
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                            break;
+                        }
+                    }
+                } else {
+                    VehicleSimulator simulator = new VehicleSimulator(graph, vehicleCount, 200.0, 1.0 / Config.UPDATE_RATE_HZ, Config.SEED);
+                    while (true) {
+                        try {
+                            var updates = simulator.tick();
+                            client.sendBatch(updates);
+                            Thread.sleep((long)(1000.0 / Config.UPDATE_RATE_HZ));
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                            break;
+                        }
                     }
                 }
             }).start();

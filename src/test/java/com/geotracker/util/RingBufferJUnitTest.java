@@ -8,7 +8,7 @@ public class RingBufferJUnitTest {
 
     @Test
     void offerPollFifo() {
-        RingBuffer rb = new RingBuffer(4);
+        RingBuffer<PositionUpdate> rb = new RingBuffer<>(4);
         PositionUpdate u1 = new PositionUpdate(1, 0, 0, 0);
         PositionUpdate u2 = new PositionUpdate(2, 1, 1, 1);
         assertTrue(rb.offer(u1));
@@ -20,7 +20,7 @@ public class RingBufferJUnitTest {
 
     @Test
     void offerWrapOverwritesOldest() {
-        RingBuffer rb = new RingBuffer(2);
+        RingBuffer<PositionUpdate> rb = new RingBuffer<>(2);
         PositionUpdate u1 = new PositionUpdate(1, 0, 0, 0);
         PositionUpdate u2 = new PositionUpdate(2, 1, 1, 1);
         PositionUpdate u3 = new PositionUpdate(3, 2, 2, 2);
@@ -34,7 +34,7 @@ public class RingBufferJUnitTest {
 
     @Test
     void isEmptyOnEmpty() {
-        RingBuffer rb = new RingBuffer(4);
+        RingBuffer<PositionUpdate> rb = new RingBuffer<>(4);
         assertTrue(rb.isEmpty());
         rb.offer(new PositionUpdate(1, 0, 0, 0));
         assertFalse(rb.isEmpty());
@@ -44,7 +44,7 @@ public class RingBufferJUnitTest {
 
     @Test
     void multipleProducersDoNotLoseUpdates() throws Exception {
-        RingBuffer rb = new RingBuffer(10000);
+        RingBuffer<PositionUpdate> rb = new RingBuffer<>(10000);
         int producerCount = 8;
         int updatesPerProducer = 1000;
         java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(producerCount);
@@ -73,7 +73,7 @@ public class RingBufferJUnitTest {
 
     @Test
     void concurrentOfferAndPollDoNotCorrupt() throws Exception {
-        RingBuffer rb = new RingBuffer(5000);
+        RingBuffer<PositionUpdate> rb = new RingBuffer<>(5000);
         int producerCount = 4;
         int updatesPerProducer = 500;
         java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(producerCount);

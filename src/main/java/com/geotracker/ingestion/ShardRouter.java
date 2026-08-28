@@ -4,14 +4,15 @@ import com.geotracker.model.PositionUpdate;
 import com.geotracker.util.RingBuffer;
 
 public class ShardRouter {
-    private final RingBuffer[] ringBuffers;
+    private final RingBuffer<PositionUpdate>[] ringBuffers;
     private final int shardCount;
 
+    @SuppressWarnings("unchecked")
     public ShardRouter(int shardCount, int ringBufferSize) {
         this.shardCount = shardCount;
         this.ringBuffers = new RingBuffer[shardCount];
         for (int i = 0; i < shardCount; i++) {
-            ringBuffers[i] = new RingBuffer(ringBufferSize);
+            ringBuffers[i] = new RingBuffer<>(ringBufferSize);
         }
     }
 
@@ -20,7 +21,7 @@ public class ShardRouter {
         ringBuffers[shard].offer(update);
     }
 
-    public RingBuffer getRingBuffer(int shard) {
+    public RingBuffer<PositionUpdate> getRingBuffer(int shard) {
         return ringBuffers[shard];
     }
 

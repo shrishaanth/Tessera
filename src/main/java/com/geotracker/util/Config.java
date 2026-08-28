@@ -23,4 +23,6 @@ public class Config {
     public static final double AREA_MAX_LNG = -122.330;
     public static final String AREA_NAME = "Gas Works Park, Seattle, WA";
     public static final String ROADGRAPH_RESOURCE = "/roadgraph/osm-roadgraph.json";
+    public static final String GRID_ROADGRAPH_RESOURCE = "/roadgraph/grid_roadgraph.json";
+    public static final String TRAJECTORY_RESOURCE = "/data/vehicle_trajectories.csv";
 }
