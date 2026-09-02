@@ -123,13 +123,32 @@ class PostgisDurableStoreDockerIT {
 
     @Test
     void jobsUpsert() {
-        store.saveJob(new JobRecord("JOB-PG", "addr", 42.0, -71.0, null,
-                "UNASSIGNED", 1_700_000_000_000L, null, null));
-        store.saveJob(new JobRecord("JOB-PG", "addr", 42.0, -71.0, "CAR-9",
-                "ASSIGNED", 1_700_000_000_000L, 1_700_000_050_000L, null));
+        store.saveJob(new JobRecord("JOB-PG", "North Loop", "addr", 42.0, -71.0, "S1",
+                null, null, "UNASSIGNED", 1_700_000_000_000L, null, null, null, null));
+        store.saveJob(new JobRecord("JOB-PG", "North Loop", "addr", 42.0, -71.0, "S1",
+                "CAR-9", "Driver A", "ASSIGNED", 1_700_000_000_000L, 1_700_000_050_000L,
+                1_700_000_650_000L, null, null));
         List<JobRecord> jobs = store.loadJobs();
         assertThat(jobs.stream().filter(j -> j.jobId().equals("JOB-PG")).findFirst().orElseThrow())
-                .extracting(JobRecord::status, JobRecord::assignedVehicleId)
-                .containsExactly("ASSIGNED", "CAR-9");
+                .extracting(JobRecord::status, JobRecord::assignedVehicleId, JobRecord::driverName)
+                .containsExactly("ASSIGNED", "CAR-9", "Driver A");
+    }
+
+    @Test
+    void reportingFactsComeBackFromRealSql() {
+        long base = 1_700_100_000_000L;
+        store.saveJob(new JobRecord("JOB-R1", "R1", "a", 42.0, -71.0, "S1", "V1", "D1",
+                "COMPLETED", base, base + 60_000L, base + 600_000L, base + 500_000L, base + 500_000L));
+        store.saveJob(new JobRecord("JOB-R2", "R1", "b", 42.0, -71.0, "S1", "V2", "D2",
+                "COMPLETED", base, base + 60_000L, base + 600_000L, base + 900_000L, base + 900_000L));
+        store.saveGeofenceEvents(List.of(
+                GeofenceEventRecord.exit("V1", "S1", base + 500_000L, 420),
+                GeofenceEventRecord.exit("V2", "S1", base + 900_000L, 780)));
+
+        assertThat(store.completedJobs(base, base + 1_000_000L)).hasSize(2);
+        assertThat(store.completedJobs(base, base + 1_000_000L).stream()
+                .filter(f -> f.onTime(0)).count()).isEqualTo(1);
+        assertThat(store.siteVisits(base, base + 1_000_000L)).hasSize(2);
+        assertThat(store.reportingWindow().completedJobs()).isGreaterThanOrEqualTo(2);
     }
 }

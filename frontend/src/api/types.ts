@@ -108,6 +108,68 @@ export interface Identity {
   role: string;
 }
 
+// ---- Phase 3: reporting (FR-4) ----
+
+export interface Trend {
+  previousValue: number | null;
+  deltaValue: number | null;
+  direction: "up" | "down" | "flat";
+}
+
+export interface WeekPoint {
+  weekStartEpochMs: number;
+  completed: number;
+  onTime: number;
+  onTimePct: number | null;
+}
+
+export interface OnTimeReport {
+  fromEpochMs: number;
+  toEpochMs: number;
+  completed: number;
+  onTime: number;
+  onTimePct: number | null;
+  byWeek: WeekPoint[];
+  trend: Trend;
+  provisional: boolean;
+}
+
+export interface SiteDwell {
+  siteId: string;
+  siteName: string;
+  visits: number;
+  avgDwellSeconds: number | null;
+  enoughData: boolean;
+}
+
+export interface DwellReport {
+  fromEpochMs: number;
+  toEpochMs: number;
+  totalVisits: number;
+  overallAvgDwellSeconds: number | null;
+  bySite: SiteDwell[];
+  trend: Trend;
+  provisional: boolean;
+}
+
+export interface Readiness {
+  ready: boolean;
+  collectionDays: number;
+  minCollectionDays: number;
+  completedJobs: number;
+  minCompletedJobs: number;
+  siteExits: number;
+  minSiteExits: number;
+  reasons: string[];
+  syntheticHistory: boolean;
+}
+
+export interface ReportFilterOptions {
+  routes: string[];
+  drivers: string[];
+  sites: { id: string; name: string }[];
+}
+
 export interface FleetFrame {
   type: "fleet";
   ts: number;

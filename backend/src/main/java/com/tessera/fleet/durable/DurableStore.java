@@ -3,6 +3,10 @@ package com.tessera.fleet.durable;
 import java.util.List;
 import java.util.Optional;
 
+import com.tessera.fleet.reporting.ReportingFacts.CompletedJobFact;
+import com.tessera.fleet.reporting.ReportingFacts.DataWindow;
+import com.tessera.fleet.reporting.ReportingFacts.SiteVisitFact;
+
 /**
  * The durable layer (SRS §3.1): durable, spatially- and temporally-indexed
  * storage for every position fix and every geofence event, plus site definitions
@@ -44,6 +48,18 @@ public interface DurableStore {
     Optional<GeofenceEventRecord> lastGeofenceEvent(String vehicleId, String siteId);
 
     long positionCount();
+
+    // ---- reporting reads (FR-4). Row counts are bounded for a 20–200 vehicle
+    //      fleet; the reporting layer does the grouping and trend maths.
+
+    /** Completed jobs whose completion time falls in {@code [fromMs, toMs)}. */
+    List<CompletedJobFact> completedJobs(long fromMs, long toMs);
+
+    /** Geofence EXIT events (one per site visit) in {@code [fromMs, toMs)}. */
+    List<SiteVisitFact> siteVisits(long fromMs, long toMs);
+
+    /** Extent and volume of durable history, for the FR-4.4 sufficiency gate. */
+    DataWindow reportingWindow();
 
     /** Whether durable writes are currently succeeding (drives the health indicator). */
     boolean healthy();

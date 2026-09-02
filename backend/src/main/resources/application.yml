@@ -90,6 +90,16 @@ tessera:
     # Default dwell-time alert threshold; a site may override it (FR-3.5).
     default-dwell-alert-seconds: 1800
 
+  # Historical reporting (FR-4). `min-*` are the explicit answer to SRS Appendix B:
+  # reports are not presented as reliable until this much history and this many
+  # samples exist (FR-4.4).
+  reporting:
+    min-collection-days: 14
+    min-completed-jobs: 50
+    min-site-exits: 20
+    on-time-grace-seconds: 300
+    synthetic-history: false
+
   # Durable layer write-behind (SRS §3.1). The queue is bounded; when it is full
   # or the database is unreachable, positions are dropped and counted — the live
   # path is never blocked (SRS §2.5).
@@ -129,6 +139,10 @@ tessera:
     # Low so a slow pass through a demo site trips a dwell alert within a
     # short session; a real deployment uses minutes (see the default above).
     default-dwell-alert-seconds: 25
+  # The demo back-fills weeks of synthetic history so the reporting dashboard
+  # renders — flagged so the UI says the figures are demo data (FR-4.4 honesty).
+  reporting:
+    synthetic-history: true
 
 ---
 spring:

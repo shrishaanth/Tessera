@@ -15,6 +15,9 @@ import com.tessera.fleet.alert.Alert;
 import com.tessera.fleet.alert.AlertService;
 import com.tessera.fleet.durable.DurableStore;
 import com.tessera.fleet.durable.GeofenceEventRecord;
+import org.springframework.context.ApplicationEventPublisher;
+
+import com.tessera.fleet.durable.GeofenceEventRecord.Type;
 import com.tessera.fleet.durable.WriteBehindService;
 import com.tessera.fleet.live.LiveFleetService;
 import com.tessera.fleet.web.ws.LiveWebSocketHandler;
@@ -36,19 +39,22 @@ public class GeofenceService {
     private final LiveFleetService liveFleet;
     private final AlertService alertService;
     private final LiveWebSocketHandler webSocket;
+    private final ApplicationEventPublisher events;
 
     private final Map<String, String> siteNames = new ConcurrentHashMap<>();
     private final Map<String, String> lastOnSite = new ConcurrentHashMap<>();
 
     public GeofenceService(GeofenceEngine engine, DurableStore durableStore,
                            WriteBehindService writeBehind, LiveFleetService liveFleet,
-                           AlertService alertService, LiveWebSocketHandler webSocket) {
+                           AlertService alertService, LiveWebSocketHandler webSocket,
+                           ApplicationEventPublisher events) {
         this.engine = engine;
         this.durableStore = durableStore;
         this.writeBehind = writeBehind;
         this.liveFleet = liveFleet;
         this.alertService = alertService;
         this.webSocket = webSocket;
+        this.events = events;
     }
 
     @EventListener(ApplicationReadyEvent.class)
@@ -76,6 +82,10 @@ public class GeofenceService {
         for (GeofenceEventRecord event : result.events()) {
             writeBehind.offerGeofenceEvent(event);
             webSocket.broadcastGeofenceEvent(event, siteNames.get(event.siteId()));
+            if (event.type() == Type.ENTER) {
+                events.publishEvent(new GeofenceEnteredEvent(
+                        event.vehicleId(), event.siteId(), event.epochMillis()));
+            }
         }
         for (GeofenceEngine.DwellAlert dwell : result.dwellAlerts()) {
             alertService.raise(Alert.Type.DWELL_EXCEEDED, Alert.Severity.WARNING,

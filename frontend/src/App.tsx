@@ -4,6 +4,7 @@ import { LiveStreamProvider, useLiveStream } from "./live/LiveStreamContext";
 import { LoginView } from "./components/LoginView";
 import { LiveMapView } from "./components/LiveMapView";
 import { AlertsView } from "./components/AlertsView";
+import { ReportsView } from "./components/ReportsView";
 import { DataSourcesView } from "./components/DataSourcesView";
 
 type Tab = "map" | "alerts" | "reports" | "settings";
@@ -57,16 +58,7 @@ function Shell() {
         <main className="view">
           {tab === "map" && <LiveMapView />}
           {tab === "alerts" && <AlertsView />}
-          {tab === "reports" && (
-            <div className="ds">
-              <h2 className="heading-lg">Reports</h2>
-              <p style={{ color: "var(--neutral-500)" }}>
-                Historical performance reporting is delivered in Phase 3, once the
-                durable layer has collected a sufficient data-collection period
-                (SRS §8, FR-4.4).
-              </p>
-            </div>
-          )}
+          {tab === "reports" && <ReportsView />}
           {tab === "settings" && <DataSourcesView />}
         </main>
       </div>

@@ -9,6 +9,8 @@ import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import org.springframework.context.ApplicationEventPublisher;
+
 import com.tessera.fleet.alert.AlertService;
 import com.tessera.fleet.durable.InMemoryDurableStore;
 import com.tessera.fleet.durable.WriteBehindService;
@@ -27,7 +29,8 @@ class SiteServiceTest {
         engine = new GeofenceEngine(20_000, 1_800_000);
         GeofenceService geofenceService = new GeofenceService(engine, store,
                 mock(WriteBehindService.class), mock(LiveFleetService.class),
-                mock(AlertService.class), mock(LiveWebSocketHandler.class));
+                mock(AlertService.class), mock(LiveWebSocketHandler.class),
+                mock(ApplicationEventPublisher.class));
         siteService = new SiteService(store, geofenceService);
     }
 

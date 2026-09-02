@@ -13,7 +13,7 @@ The system is two cooperating layers (SRS §2.1):
   Behind a `DurableStore` seam with an in-memory default, so the system runs with
   no database and live dispatch is unaffected if the database is down (NFR-3).
 
-## Status: Phases 1–2 complete
+## Status: Phases 1–3 complete
 
 **Phase 1 — live layer & dispatcher map (SRS §8)**
 
@@ -39,7 +39,17 @@ The system is two cooperating layers (SRS §2.1):
 | SRS §3.1 | Every position and geofence event written durably via a bounded write-behind queue |
 | SRS §2.5 / NFR-3 | Queue-full or DB-down → drop + count, health degraded; live dispatch keeps running |
 
-Out now: reporting (Phase 3), address geocoding & trajectory replay (Phase 4).
+**Phase 3 — operations reporting (SRS §8)**
+
+| Req | Delivered |
+|-----|-----------|
+| FR-4.1 | On-time arrival % — filterable by route, driver, site, date range. "Arrival" = geofence ENTER at the job's destination site; "on time" = within the ETA-at-assignment plus a grace window |
+| FR-4.2 | Average dwell time per site, filterable by date range |
+| FR-4.3 | Trend indicators vs the immediately preceding period of equal length, on both metrics |
+| FR-4.4 | Reports are marked **provisional** and a banner is shown until an explicit data-sufficiency gate is met (min collection days + min completed jobs — the Appendix B open item, now defined in `tessera.reporting.*`) |
+| SRS §5.3 | Reporting served request/response, not real-time |
+
+Out now: address geocoding & trajectory replay (Phase 4).
 
 ## Layout
 
@@ -122,9 +132,9 @@ TESSERA_GTFS_AGENCY="<Agency name>" \
 ## Test
 
 ```bash
-cd backend && mvn verify   # 52 unit + 19 integration (embedded Redis + in-memory durable, no Docker)
-                           # + 4 PostGIS/TimescaleDB ITs, auto-skipped when Docker is absent
-cd frontend && npm test    # 15 component/client tests
+cd backend && mvn verify   # 66 unit + 23 integration (embedded Redis + in-memory durable, no Docker)
+                           # + 5 PostGIS/TimescaleDB ITs, auto-skipped when Docker is absent
+cd frontend && npm test    # 20 component/client tests
 ```
 
 ## Road graph

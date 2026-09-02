@@ -2,16 +2,28 @@ import type {
   Alert,
   CreateJobResponse,
   DataSourceInfo,
+  DwellReport,
   GeofenceEventRecord,
   Identity,
   Job,
   NearestVehicle,
+  OnTimeReport,
+  Readiness,
+  ReportFilterOptions,
   SiteDefinition,
   SiteView,
   Vehicle,
   VehicleDetail,
   VehicleStatus,
 } from "./types";
+
+export interface ReportQuery {
+  from?: number;
+  to?: number;
+  route?: string;
+  driver?: string;
+  siteId?: string;
+}
 
 /** Thrown for any non-2xx response; carries the HTTP status. */
 export class ApiError extends Error {
@@ -97,7 +109,27 @@ export const api = {
     q.set("limit", String(params.limit ?? 100));
     return req<GeofenceEventRecord[]>(`/api/geofence-events?${q.toString()}`);
   },
+
+  reportReadiness: () => req<Readiness>("/api/reports/readiness"),
+
+  reportFilters: () => req<ReportFilterOptions>("/api/reports/filters"),
+
+  onTimeReport: (q: ReportQuery = {}) =>
+    req<OnTimeReport>(`/api/reports/on-time${reportQs(q)}`),
+
+  dwellReport: (q: ReportQuery = {}) => req<DwellReport>(`/api/reports/dwell${reportQs(q)}`),
 };
+
+function reportQs(q: ReportQuery): string {
+  const p = new URLSearchParams();
+  if (q.from) p.set("from", String(q.from));
+  if (q.to) p.set("to", String(q.to));
+  if (q.route) p.set("route", q.route);
+  if (q.driver) p.set("driver", q.driver);
+  if (q.siteId) p.set("siteId", q.siteId);
+  const s = p.toString();
+  return s ? `?${s}` : "";
+}
 
 export const STATUS_COLOR: Record<VehicleStatus, string> = {
   AVAILABLE: "#1d9e75",

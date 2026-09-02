@@ -34,6 +34,11 @@ public class SiteService {
         return geofenceService.sites().stream().filter(s -> s.id().equals(siteId)).findFirst();
     }
 
+    /** The customer site whose boundary contains the point, if any (FR-4.1 links a job to a site). */
+    public Optional<Site> siteContaining(double lat, double lon) {
+        return geofenceService.sites().stream().filter(s -> s.contains(lat, lon)).findFirst();
+    }
+
     public Site create(SiteDefinition def) {
         return upsert("SITE-" + UUID.randomUUID().toString().substring(0, 8), def,
                 System.currentTimeMillis());

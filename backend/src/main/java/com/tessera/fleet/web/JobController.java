@@ -39,6 +39,7 @@ public class JobController {
     }
 
     public record CreateJobRequest(
+            String route,
             String destinationAddress,
             double destLatitude,
             double destLongitude) { }
@@ -69,7 +70,7 @@ public class JobController {
                 || body.destLongitude() < -180 || body.destLongitude() > 180) {
             return ResponseEntity.badRequest().build();
         }
-        Job job = jobService.create(
+        Job job = jobService.create(body.route(),
                 body.destinationAddress(), body.destLatitude(), body.destLongitude());
         List<NearestVehicle> nearest = nearestVehicleService.nearestAvailable(
                 body.destLatitude(), body.destLongitude(), 0);
