@@ -170,6 +170,45 @@ export interface ReportFilterOptions {
   sites: { id: string; name: string }[];
 }
 
+// ---- Phase 4: search, geocoding, replay (FR-6, FR-5) ----
+
+export interface GeocodeResult {
+  displayName: string;
+  latitude: number;
+  longitude: number;
+  category: string;
+  type: string;
+  importance: number;
+}
+
+export interface GeocodeResponse {
+  query: string;
+  results: GeocodeResult[];
+  degraded: boolean;
+}
+
+export interface ReplayVehicle {
+  vehicleId: string;
+  driverName: string | null;
+}
+
+export interface TrajectoryPoint {
+  latitude: number;
+  longitude: number;
+  epochMillis: number;
+  speedKph: number;
+  headingDeg: number;
+}
+
+export interface Trajectory {
+  vehicleId: string;
+  fromEpochMs: number;
+  toEpochMs: number;
+  totalPoints: number;
+  sampled: boolean;
+  points: TrajectoryPoint[];
+}
+
 export interface FleetFrame {
   type: "fleet";
   ts: number;

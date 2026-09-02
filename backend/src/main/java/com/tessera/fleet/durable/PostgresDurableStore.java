@@ -106,6 +106,26 @@ public class PostgresDurableStore implements DurableStore {
     }
 
     @Override
+    public List<SiteRecord> searchSites(String query, int limit) {
+        String q = query == null ? "" : query.trim();
+        if (q.isEmpty()) {
+            return List.of();
+        }
+        return jdbc.query(
+                "SELECT site_id, name, address, ST_AsText(boundary) AS boundary_wkt, "
+                        + "center_lat, center_lon, radius_m, dwell_alert_seconds, created_at "
+                        + "FROM sites "
+                        + "WHERE name ILIKE '%' || ? || '%' "
+                        + "   OR search_tsv @@ plainto_tsquery('simple', ?) "
+                        + "   OR similarity(name, ?) > 0.2 "
+                        + "ORDER BY GREATEST(similarity(name, ?), "
+                        + "                  ts_rank(search_tsv, plainto_tsquery('simple', ?))) DESC, "
+                        + "         name "
+                        + "LIMIT ?",
+                SITE_MAPPER, q, q, q, q, q, limit);
+    }
+
+    @Override
     public void saveJob(JobRecord j) {
         jdbc.update(
                 "INSERT INTO jobs (job_id, route, destination_address, dest_lat, dest_lon, "
@@ -182,6 +202,19 @@ public class PostgresDurableStore implements DurableStore {
                 (rs, i) -> new SiteVisitFact(rs.getString("site_id"),
                         rs.getInt("dwell_seconds"), rs.getTimestamp("ts").getTime()),
                 new Timestamp(fromMs), new Timestamp(toMs));
+    }
+
+    @Override
+    public List<PositionRecord> trajectory(String vehicleId, long fromMs, long toMs) {
+        return jdbc.query(
+                "SELECT vehicle_id, lat, lon, speed_kph, heading_deg, ts FROM positions "
+                        + "WHERE vehicle_id = ? AND ts >= ? AND ts < ? ORDER BY ts",
+                (rs, i) -> new PositionRecord(rs.getString("vehicle_id"),
+                        rs.getDouble("lat"), rs.getDouble("lon"),
+                        rs.getObject("speed_kph") == null ? Double.NaN : rs.getDouble("speed_kph"),
+                        rs.getObject("heading_deg") == null ? Double.NaN : rs.getDouble("heading_deg"),
+                        rs.getTimestamp("ts").getTime()),
+                vehicleId, new Timestamp(fromMs), new Timestamp(toMs));
     }
 
     @Override

@@ -31,6 +31,9 @@ public final class TestFixtures {
                 new FleetProperties.Durable("in-memory", 50000, 500, 1000L,
                         new FleetProperties.DataSource("jdbc:postgresql://localhost/tessera",
                                 "tessera", "tessera")),
+                new FleetProperties.Geocoding("https://nominatim.openstreetmap.org",
+                        "tessera-fleet/1.0 (test)", 1100L, 500, 6000, 8),
+                new FleetProperties.Replay(3000),
                 List.of(new FleetProperties.User("dispatch", "{noop}dispatch", "DISPATCHER")));
     }
 

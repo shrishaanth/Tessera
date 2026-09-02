@@ -63,6 +63,21 @@ public class DataSourceService {
                         + "tile provider would be used at production scale.",
                 true));
 
+        String nominatim = properties.geocoding() != null ? properties.geocoding().baseUrl() : "";
+        boolean selfHosted = nominatim != null && !nominatim.contains("nominatim.openstreetmap.org");
+        out.add(new DataSourceInfo(
+                "nominatim",
+                "Nominatim geocoding" + (selfHosted ? " (self-hosted)" : ""),
+                selfHosted ? "Self-hosted OpenStreetMap Nominatim" : "OpenStreetMap Nominatim (public)",
+                "Address autocomplete and geocoding for new-job entry",
+                Role.PRODUCTION,
+                selfHosted
+                        ? "Self-hosted geocoder over OpenStreetMap data. No usage limit."
+                        : "Free public geocoder. Rate-limited to ~1 request/second — the "
+                            + "system caps and caches requests accordingly; a self-hosted "
+                            + "Nominatim would be used at production volume.",
+                true));
+
         boolean postgres = properties.durable().postgres();
         out.add(new DataSourceInfo(
                 "durable-store",

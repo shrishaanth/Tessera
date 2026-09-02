@@ -11,21 +11,25 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.tessera.fleet.geofence.Site;
 import com.tessera.fleet.geofence.SiteDefinition;
 import com.tessera.fleet.geofence.SiteService;
+import com.tessera.fleet.search.SiteSearchService;
 
-/** Customer-site (geofence) CRUD — FR-3.1. */
+/** Customer-site (geofence) CRUD (FR-3.1) and fuzzy name search (FR-6.3). */
 @RestController
 @RequestMapping("/api/sites")
 public class SiteController {
 
     private final SiteService siteService;
+    private final SiteSearchService siteSearchService;
 
-    public SiteController(SiteService siteService) {
+    public SiteController(SiteService siteService, SiteSearchService siteSearchService) {
         this.siteService = siteService;
+        this.siteSearchService = siteSearchService;
     }
 
     public record SiteView(
@@ -52,6 +56,13 @@ public class SiteController {
     @GetMapping
     public List<SiteView> list() {
         return siteService.list().stream().map(SiteView::of).toList();
+    }
+
+    /** Fuzzy search of known customer site names (FR-6.3). */
+    @GetMapping("/search")
+    public List<SiteView> search(@RequestParam("q") String query,
+                                 @RequestParam(name = "limit", defaultValue = "8") int limit) {
+        return siteSearchService.search(query, limit).stream().map(SiteView::of).toList();
     }
 
     @GetMapping("/{siteId}")

@@ -19,6 +19,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param roadGraphResource   classpath location of the OSM-derived routing graph.
  * @param geofence            geofencing &amp; dwell-time tuning (FR-3).
  * @param durable             durable-layer write-behind settings (SRS §3.1).
+ * @param geocoding           address autocomplete / geocoding via Nominatim (FR-6).
+ * @param replay              trajectory-replay tuning (FR-5).
  * @param users               accounts permitted to sign in (NFR-7).
  */
 @ConfigurationProperties(prefix = "tessera")
@@ -33,6 +35,8 @@ public record FleetProperties(
         String roadGraphResource,
         Geofence geofence,
         Durable durable,
+        Geocoding geocoding,
+        Replay replay,
         List<User> users) {
 
     public enum PositionSourceType { SIMULATOR, GTFS_REALTIME }
@@ -92,6 +96,27 @@ public record FleetProperties(
     }
 
     public record DataSource(String url, String username, String password) { }
+
+    /**
+     * Address autocomplete / geocoding via Nominatim (SRS §5.2 — free, public,
+     * rate-limited). Point {@code baseUrl} at a self-hosted instance to lift the
+     * rate limit.
+     *
+     * @param baseUrl        Nominatim base URL
+     * @param userAgent      required by Nominatim's usage policy; identifies this app
+     * @param minIntervalMs  minimum spacing between upstream calls (public policy: ≥ 1 s)
+     * @param cacheSize      how many recent queries to cache
+     * @param timeoutMs      upstream request timeout
+     * @param maxResults     cap on suggestions returned
+     */
+    public record Geocoding(String baseUrl, String userAgent, long minIntervalMs,
+                            int cacheSize, int timeoutMs, int maxResults) { }
+
+    /**
+     * @param maxPoints  a replayed path is stride-sampled down to at most this
+     *        many points so the browser can draw it (FR-5.1)
+     */
+    public record Replay(int maxPoints) { }
 
     /**
      * @param username raw username.

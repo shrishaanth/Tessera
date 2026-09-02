@@ -25,7 +25,7 @@ class WriteBehindServiceTest {
                 base.gtfs(), base.roadGraphResource(), base.geofence(),
                 new FleetProperties.Durable("in-memory", capacity, batch, flush,
                         base.durable().datasource()),
-                base.users());
+                base.geocoding(), base.replay(), base.users());
     }
 
     private static PositionRecord pos(String id) {

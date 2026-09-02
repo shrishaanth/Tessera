@@ -3,15 +3,18 @@ import type {
   CreateJobResponse,
   DataSourceInfo,
   DwellReport,
+  GeocodeResponse,
   GeofenceEventRecord,
   Identity,
   Job,
   NearestVehicle,
   OnTimeReport,
   Readiness,
+  ReplayVehicle,
   ReportFilterOptions,
   SiteDefinition,
   SiteView,
+  Trajectory,
   Vehicle,
   VehicleDetail,
   VehicleStatus,
@@ -118,6 +121,22 @@ export const api = {
     req<OnTimeReport>(`/api/reports/on-time${reportQs(q)}`),
 
   dwellReport: (q: ReportQuery = {}) => req<DwellReport>(`/api/reports/dwell${reportQs(q)}`),
+
+  geocode: (q: string, limit = 6) =>
+    req<GeocodeResponse>(`/api/geocode?q=${encodeURIComponent(q)}&limit=${limit}`),
+
+  searchSites: (q: string, limit = 8) =>
+    req<SiteView[]>(`/api/sites/search?q=${encodeURIComponent(q)}&limit=${limit}`),
+
+  replayVehicles: () => req<ReplayVehicle[]>("/api/replay/vehicles"),
+
+  trajectory: (params: { vehicleId: string; date?: string; from?: number; to?: number }) => {
+    const p = new URLSearchParams({ vehicleId: params.vehicleId });
+    if (params.date) p.set("date", params.date);
+    if (params.from) p.set("from", String(params.from));
+    if (params.to) p.set("to", String(params.to));
+    return req<Trajectory>(`/api/replay/trajectory?${p.toString()}`);
+  },
 };
 
 function reportQs(q: ReportQuery): string {

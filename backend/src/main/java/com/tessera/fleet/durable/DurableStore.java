@@ -35,6 +35,9 @@ public interface DurableStore {
 
     void deleteSite(String siteId);
 
+    /** Fuzzy search of customer site names/addresses, best match first (FR-6.3). */
+    List<SiteRecord> searchSites(String query, int limit);
+
     // ---- jobs: write-through from the live JobService
 
     void saveJob(JobRecord job);
@@ -57,6 +60,9 @@ public interface DurableStore {
 
     /** Geofence EXIT events (one per site visit) in {@code [fromMs, toMs)}. */
     List<SiteVisitFact> siteVisits(long fromMs, long toMs);
+
+    /** A vehicle's recorded positions in {@code [fromMs, toMs)}, oldest first (FR-5.1). */
+    List<PositionRecord> trajectory(String vehicleId, long fromMs, long toMs);
 
     /** Extent and volume of durable history, for the FR-4.4 sufficiency gate. */
     DataWindow reportingWindow();

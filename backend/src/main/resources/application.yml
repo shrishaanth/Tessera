@@ -90,6 +90,22 @@ tessera:
     # Default dwell-time alert threshold; a site may override it (FR-3.5).
     default-dwell-alert-seconds: 1800
 
+  # Address autocomplete / geocoding (FR-6). Nominatim (SRS §5.2): free, public,
+  # rate-limited to ~1 req/s and requires an identifying User-Agent. Point
+  # base-url at a self-hosted Nominatim to remove the limit.
+  geocoding:
+    base-url: ${NOMINATIM_URL:https://nominatim.openstreetmap.org}
+    user-agent: ${NOMINATIM_UA:tessera-fleet/1.0 (self-hosted deployment)}
+    min-interval-ms: 1100
+    cache-size: 500
+    timeout-ms: 6000
+    max-results: 8
+
+  # Trajectory replay (FR-5). A day of 1 Hz positions is ~86k points; sample down
+  # for the browser.
+  replay:
+    max-points: 3000
+
   # Historical reporting (FR-4). `min-*` are the explicit answer to SRS Appendix B:
   # reports are not presented as reliable until this much history and this many
   # samples exist (FR-4.4).

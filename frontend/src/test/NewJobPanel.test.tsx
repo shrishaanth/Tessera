@@ -21,7 +21,7 @@ describe("NewJobPanel", () => {
   it("prompts to pick a location before a draft exists", async () => {
     const onStart = vi.fn();
     render(
-      <NewJobPanel jobDraft={null} jobId={null} shortlist={[]} onStart={onStart} onCancel={() => {}} onAssigned={() => {}} />,
+      <NewJobPanel jobDraft={null} jobId={null} shortlist={[]} onStart={onStart} onSearchPick={() => {}} onCancel={() => {}} onAssigned={() => {}} />,
     );
     await userEvent.click(screen.getByRole("button", { name: /pick location/i }));
     expect(onStart).toHaveBeenCalled();
@@ -34,6 +34,7 @@ describe("NewJobPanel", () => {
         jobId="JOB-1"
         shortlist={shortlist}
         onStart={() => {}}
+        onSearchPick={() => {}}
         onCancel={() => {}}
         onAssigned={() => {}}
       />,
@@ -53,6 +54,7 @@ describe("NewJobPanel", () => {
         jobId="JOB-1"
         shortlist={shortlist}
         onStart={() => {}}
+        onSearchPick={() => {}}
         onCancel={() => {}}
         onAssigned={onAssigned}
       />,

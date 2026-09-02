@@ -13,7 +13,7 @@ The system is two cooperating layers (SRS §2.1):
   Behind a `DurableStore` seam with an in-memory default, so the system runs with
   no database and live dispatch is unaffected if the database is down (NFR-3).
 
-## Status: Phases 1–3 complete
+## Status: Phases 1–4 complete
 
 **Phase 1 — live layer & dispatcher map (SRS §8)**
 
@@ -49,7 +49,18 @@ The system is two cooperating layers (SRS §2.1):
 | FR-4.4 | Reports are marked **provisional** and a banner is shown until an explicit data-sufficiency gate is met (min collection days + min completed jobs — the Appendix B open item, now defined in `tessera.reporting.*`) |
 | SRS §5.3 | Reporting served request/response, not real-time |
 
-Out now: address geocoding & trajectory replay (Phase 4).
+**Phase 4 — dispatcher search & trajectory replay (SRS §8)**
+
+| Req | Delivered |
+|-----|-----------|
+| FR-6.1 | Address autocomplete on the new-job search box, via Nominatim (SRS §5.2), server-side rate-limited + cached |
+| FR-6.2 | A picked suggestion carries real coordinates → the nearest-vehicle search runs immediately; the map flies to the point |
+| FR-6.3 | Fuzzy search of known customer site names (PostgreSQL FTS + `pg_trgm` in prod, in-memory trigram otherwise) |
+| FR-5.1 | Ops-manager Replay view: pick a vehicle + a date → its full recorded path drawn on the map (stride-sampled for the browser) |
+| FR-5.2 | Playback: play/pause, scrub slider, 1×/8×/32× speed, a moving marker showing speed |
+
+This is the last functional phase. Phase 5 (Elasticsearch / wide-column storage)
+is conditional on NFR-4's measured-load trigger and is out of scope until then.
 
 ## Layout
 
@@ -129,12 +140,26 @@ TESSERA_GTFS_AGENCY="<Agency name>" \
 # optional: TESSERA_GTFS_KEY=... TESSERA_GTFS_KEY_HEADER=x-api-key
 ```
 
+## Address geocoding (Phase 4, FR-6)
+
+Address autocomplete uses **Nominatim** (SRS §5.2). By default it calls the public
+`nominatim.openstreetmap.org`, which is rate-limited to ~1 req/s — the backend
+throttles and caches accordingly. For production volume, run a self-hosted
+Nominatim and point at it:
+
+```bash
+NOMINATIM_URL=https://nominatim.internal NOMINATIM_UA="tessera-fleet/1.0 (ops@acme.example)"
+```
+
+If geocoding is unavailable the search box says so and the dispatcher can still
+pick a point on the map.
+
 ## Test
 
 ```bash
-cd backend && mvn verify   # 66 unit + 23 integration (embedded Redis + in-memory durable, no Docker)
-                           # + 5 PostGIS/TimescaleDB ITs, auto-skipped when Docker is absent
-cd frontend && npm test    # 20 component/client tests
+cd backend && mvn verify   # 82 unit + 26 integration (embedded Redis + in-memory durable, no Docker)
+                           # + 7 PostGIS/TimescaleDB ITs, auto-skipped when Docker is absent
+cd frontend && npm test    # 27 component/client tests
 ```
 
 ## Road graph

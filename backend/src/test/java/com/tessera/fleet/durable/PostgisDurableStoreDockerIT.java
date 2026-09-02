@@ -70,13 +70,48 @@ class PostgisDurableStoreDockerIT {
     }
 
     @Test
-    void schemaHasPostgisTimescaleAndTheHypertable() {
+    void schemaHasPostgisTimescaleTrigramAndTheHypertable() {
         assertThat(jdbc.queryForObject(
-                "SELECT count(*) FROM pg_extension WHERE extname IN ('postgis','timescaledb')",
-                Integer.class)).isEqualTo(2);
+                "SELECT count(*) FROM pg_extension WHERE extname IN ('postgis','timescaledb','pg_trgm')",
+                Integer.class)).isEqualTo(3);
         assertThat(jdbc.queryForObject(
                 "SELECT count(*) FROM timescaledb_information.hypertables WHERE hypertable_name='positions'",
                 Integer.class)).isEqualTo(1);
+        assertThat(jdbc.queryForObject(
+                "SELECT count(*) FROM information_schema.columns "
+                        + "WHERE table_name='sites' AND column_name='search_tsv'",
+                Integer.class)).isEqualTo(1);
+    }
+
+    @Test
+    void fuzzySiteSearchUsesFullTextAndTrigram() {
+        String wkt = SiteGeometry.fromRadius(42.356, -71.063, 120).toWkt();
+        store.saveSite(new SiteRecord("PG-N", "North Station Yard", "Causeway Street", wkt,
+                42.356, -71.063, 120.0, null, 1_700_000_000_000L));
+        store.saveSite(new SiteRecord("PG-D", "Common Depot", "Tremont Street", wkt,
+                42.356, -71.063, 120.0, null, 1_700_000_000_000L));
+
+        assertThat(store.searchSites("station", 5)).extracting(SiteRecord::siteId)
+                .containsExactly("PG-N");
+        assertThat(store.searchSites("comon depo", 5)).extracting(SiteRecord::siteId)
+                .contains("PG-D"); // typo tolerated via pg_trgm
+        assertThat(store.searchSites("causeway", 5)).extracting(SiteRecord::siteId)
+                .contains("PG-N"); // matched via address tsvector
+
+        store.deleteSite("PG-N");
+        store.deleteSite("PG-D");
+    }
+
+    @Test
+    void trajectoryQueryReturnsOrderedPositions() {
+        store.savePositions(List.of(
+                new PositionRecord("CAR-T", 42.360, -71.058, 20, 90, 1_700_200_003_000L),
+                new PositionRecord("CAR-T", 42.361, -71.059, 22, 92, 1_700_200_001_000L),
+                new PositionRecord("CAR-T", 42.362, -71.060, 24, 94, 1_700_200_009_000L)));
+
+        assertThat(store.trajectory("CAR-T", 1_700_200_000_000L, 1_700_200_005_000L))
+                .extracting(PositionRecord::epochMillis)
+                .containsExactly(1_700_200_001_000L, 1_700_200_003_000L);
     }
 
     @Test

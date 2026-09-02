@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import {
   Circle,
   CircleMarker,
@@ -6,6 +7,7 @@ import {
   Polyline,
   TileLayer,
   Tooltip,
+  useMap,
   useMapEvents,
 } from "react-leaflet";
 import type { NearestVehicle, SiteView, Vehicle } from "../api/types";
@@ -20,10 +22,19 @@ interface Props {
   shortlist: NearestVehicle[];
   sites: SiteView[];
   drawPoints: [number, number][];
+  focus?: [number, number] | null;
 }
 
 function ClickCapture({ onClick }: { onClick: (lat: number, lon: number) => void }) {
   useMapEvents({ click: (e) => onClick(e.latlng.lat, e.latlng.lng) });
+  return null;
+}
+
+function FlyTo({ point }: { point: [number, number] | null | undefined }) {
+  const map = useMap();
+  useEffect(() => {
+    if (point) map.setView(point, Math.max(map.getZoom(), 16), { animate: true });
+  }, [point, map]);
   return null;
 }
 
@@ -38,6 +49,7 @@ export function MapCanvas({
   shortlist,
   sites,
   drawPoints,
+  focus,
 }: Props) {
   const shortlistIds = new Set(shortlist.map((s) => s.vehicleId));
 
@@ -48,6 +60,7 @@ export function MapCanvas({
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
       <ClickCapture onClick={onMapClick} />
+      <FlyTo point={focus} />
 
       {sites.map((s) =>
         s.kind === "RADIUS" && s.centerLat != null && s.centerLon != null && s.radiusMeters ? (

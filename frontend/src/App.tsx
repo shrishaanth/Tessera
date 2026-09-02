@@ -5,9 +5,10 @@ import { LoginView } from "./components/LoginView";
 import { LiveMapView } from "./components/LiveMapView";
 import { AlertsView } from "./components/AlertsView";
 import { ReportsView } from "./components/ReportsView";
+import { ReplayView } from "./components/ReplayView";
 import { DataSourcesView } from "./components/DataSourcesView";
 
-type Tab = "map" | "alerts" | "reports" | "settings";
+type Tab = "map" | "alerts" | "reports" | "replay" | "settings";
 
 function Shell() {
   const { identity, logout } = useAuth();
@@ -44,12 +45,11 @@ function Shell() {
           <button className={tab === "alerts" ? "active" : ""} onClick={() => setTab("alerts")}>
             Alerts{unacknowledged > 0 ? ` (${unacknowledged})` : ""}
           </button>
-          <button
-            className={tab === "reports" ? "active" : ""}
-            onClick={() => setTab("reports")}
-            title="Available from Phase 3"
-          >
+          <button className={tab === "reports" ? "active" : ""} onClick={() => setTab("reports")}>
             Reports
+          </button>
+          <button className={tab === "replay" ? "active" : ""} onClick={() => setTab("replay")}>
+            Replay
           </button>
           <button className={tab === "settings" ? "active" : ""} onClick={() => setTab("settings")}>
             Settings
@@ -59,6 +59,7 @@ function Shell() {
           {tab === "map" && <LiveMapView />}
           {tab === "alerts" && <AlertsView />}
           {tab === "reports" && <ReportsView />}
+          {tab === "replay" && <ReplayView />}
           {tab === "settings" && <DataSourcesView />}
         </main>
       </div>

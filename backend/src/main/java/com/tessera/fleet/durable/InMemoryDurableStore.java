@@ -60,6 +60,20 @@ public class InMemoryDurableStore implements DurableStore {
     }
 
     @Override
+    public List<SiteRecord> searchSites(String query, int limit) {
+        return sites.values().stream()
+                .map(s -> Map.entry(s, Math.max(
+                        com.tessera.fleet.search.TextSimilarity.score(query, s.name()),
+                        0.6 * com.tessera.fleet.search.TextSimilarity.score(
+                                query, s.address() == null ? "" : s.address()))))
+                .filter(e -> e.getValue() >= 0.15)
+                .sorted((a, b) -> Double.compare(b.getValue(), a.getValue()))
+                .limit(limit)
+                .map(Map.Entry::getKey)
+                .toList();
+    }
+
+    @Override
     public void saveJob(JobRecord job) {
         jobs.put(job.jobId(), job);
     }
@@ -120,6 +134,15 @@ public class InMemoryDurableStore implements DurableStore {
             out.add(new SiteVisitFact(e.siteId(), e.dwellSeconds(), e.epochMillis()));
         }
         return out;
+    }
+
+    @Override
+    public List<PositionRecord> trajectory(String vehicleId, long fromMs, long toMs) {
+        return positions.stream()
+                .filter(p -> vehicleId.equals(p.vehicleId()))
+                .filter(p -> p.epochMillis() >= fromMs && p.epochMillis() < toMs)
+                .sorted(Comparator.comparingLong(PositionRecord::epochMillis))
+                .toList();
     }
 
     @Override

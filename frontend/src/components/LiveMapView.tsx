@@ -6,6 +6,7 @@ import { MapCanvas } from "./MapCanvas";
 import { StatusFilterBar } from "./StatusFilterBar";
 import { VehicleDetailPanel } from "./VehicleDetailPanel";
 import { NewJobPanel } from "./NewJobPanel";
+import type { PickedLocation } from "./AddressSearchBox";
 import { SitePanel } from "./SitePanel";
 import type { SiteDrawMode } from "./SitePanel";
 
@@ -26,6 +27,7 @@ export function LiveMapView() {
   const [siteMode, setSiteMode] = useState<SiteDrawMode>("idle");
   const [drawPoints, setDrawPoints] = useState<[number, number][]>([]);
   const [radiusCenter, setRadiusCenter] = useState<[number, number] | null>(null);
+  const [focus, setFocus] = useState<[number, number] | null>(null);
 
   const refreshSites = () => api.sites().then(setSites).catch(() => {});
   useEffect(() => {
@@ -44,6 +46,20 @@ export function LiveMapView() {
       return next;
     });
 
+  const startJobAt = async (lat: number, lon: number, address?: string) => {
+    setJobMode(true);
+    setJobDraft({ lat, lon });
+    setSelectedId(null);
+    setFocus([lat, lon]);
+    try {
+      const res = await api.createJob(lat, lon, address);
+      setJobId(res.job.id);
+      setShortlist(res.nearestAvailable);
+    } catch {
+      setShortlist([]);
+    }
+  };
+
   const onMapClick = async (lat: number, lon: number) => {
     if (siteMode === "sitePoly") {
       setDrawPoints((p) => [...p, [lat, lon]]);
@@ -54,15 +70,12 @@ export function LiveMapView() {
       return;
     }
     if (!jobMode) return;
-    setJobDraft({ lat, lon });
-    setSelectedId(null);
-    try {
-      const res = await api.createJob(lat, lon);
-      setJobId(res.job.id);
-      setShortlist(res.nearestAvailable);
-    } catch {
-      setShortlist([]);
-    }
+    await startJobAt(lat, lon);
+  };
+
+  const onSearchPick = (loc: PickedLocation) => {
+    resetSiteDraw();
+    void startJobAt(loc.lat, loc.lon, loc.kind === "address" ? loc.label : undefined);
   };
 
   const resetJob = () => {
@@ -139,6 +152,7 @@ export function LiveMapView() {
           shortlist={shortlist}
           sites={sites}
           drawPoints={siteMode === "sitePoly" ? drawPoints : []}
+          focus={focus}
         />
       </div>
 
@@ -152,6 +166,7 @@ export function LiveMapView() {
             setJobMode(true);
             setSelectedId(null);
           }}
+          onSearchPick={onSearchPick}
           onCancel={resetJob}
           onAssigned={resetJob}
         />

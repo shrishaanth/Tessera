@@ -1,12 +1,15 @@
 import { useState } from "react";
 import { api, ApiError } from "../api/client";
 import type { NearestVehicle } from "../api/types";
+import { AddressSearchBox } from "./AddressSearchBox";
+import type { PickedLocation } from "./AddressSearchBox";
 
 interface Props {
   jobDraft: { lat: number; lon: number } | null;
   jobId: string | null;
   shortlist: NearestVehicle[];
   onStart: () => void;
+  onSearchPick: (loc: PickedLocation) => void;
   onCancel: () => void;
   onAssigned: () => void;
 }
@@ -16,7 +19,15 @@ function fmtEta(seconds: number): string {
   return m < 1 ? "<1 min" : `${m} min`;
 }
 
-export function NewJobPanel({ jobDraft, jobId, shortlist, onStart, onCancel, onAssigned }: Props) {
+export function NewJobPanel({
+  jobDraft,
+  jobId,
+  shortlist,
+  onStart,
+  onSearchPick,
+  onCancel,
+  onAssigned,
+}: Props) {
   const [assigning, setAssigning] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -39,10 +50,11 @@ export function NewJobPanel({ jobDraft, jobId, shortlist, onStart, onCancel, onA
       <section>
         <div className="heading-md">New job</div>
         <p style={{ color: "var(--neutral-500)", fontSize: 12 }}>
-          Click a point on the map to set a job location and get the nearest
-          available vehicles, ranked by road-network drive time.
+          Search an address or customer site, or pick a point on the map, to get
+          the nearest available vehicles ranked by road-network drive time.
         </p>
-        <button className="btn" onClick={onStart}>
+        <AddressSearchBox onPick={onSearchPick} />
+        <button className="btn" style={{ marginTop: 8 }} onClick={onStart}>
           Pick location on map
         </button>
       </section>

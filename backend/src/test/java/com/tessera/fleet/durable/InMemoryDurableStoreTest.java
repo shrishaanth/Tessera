@@ -54,6 +54,38 @@ class InMemoryDurableStoreTest {
     }
 
     @Test
+    void searchSitesRanksFuzzyNameMatches() {
+        store.saveSite(new SiteRecord("S1", "North Station Yard", "Causeway St",
+                "POLYGON((0 0,0 1,1 1,0 0))", null, null, null, null, 1));
+        store.saveSite(new SiteRecord("S2", "Downtown Crossing Depot", "Washington St",
+                "POLYGON((0 0,0 1,1 1,0 0))", null, null, null, null, 1));
+        store.saveSite(new SiteRecord("S3", "Common Depot", "Tremont St",
+                "POLYGON((0 0,0 1,1 1,0 0))", null, null, null, null, 1));
+
+        assertThat(store.searchSites("north stn", 5)).extracting(SiteRecord::siteId)
+                .containsExactly("S1");
+        assertThat(store.searchSites("depot", 5)).extracting(SiteRecord::siteId)
+                .containsExactlyInAnyOrder("S2", "S3");
+        assertThat(store.searchSites("causeway", 5)).extracting(SiteRecord::siteId)
+                .contains("S1"); // matched via address
+        assertThat(store.searchSites("xyzzy", 5)).isEmpty();
+    }
+
+    @Test
+    void trajectoryReturnsAVehiclesPositionsInTimeOrder() {
+        store.savePositions(List.of(
+                new PositionRecord("CAR-1", 42.0, -71.0, 0, 0, 3000),
+                new PositionRecord("CAR-1", 42.1, -71.1, 0, 0, 1000),
+                new PositionRecord("CAR-2", 1, 1, 0, 0, 2000),
+                new PositionRecord("CAR-1", 42.2, -71.2, 0, 0, 9000)));
+
+        assertThat(store.trajectory("CAR-1", 0, 5000))
+                .extracting(PositionRecord::epochMillis).containsExactly(1000L, 3000L);
+        assertThat(store.trajectory("CAR-1", 0, 100000))
+                .extracting(PositionRecord::epochMillis).containsExactly(1000L, 3000L, 9000L);
+    }
+
+    @Test
     void jobsSaveAndLoad() {
         store.saveJob(new JobRecord("JOB-1", "North Loop", "addr", 42.0, -71.0, "S1",
                 null, null, "UNASSIGNED", 1000, null, null, null, null));
