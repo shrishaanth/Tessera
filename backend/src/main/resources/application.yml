@@ -1,0 +1,91 @@
+spring:
+  application:
+    name: tessera-fleet
+  threads:
+    virtual:
+      enabled: true
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      timeout: 2s
+      lettuce:
+        pool:
+          enabled: true
+          max-active: 16
+          max-idle: 8
+
+server:
+  port: ${PORT:8080}
+  error:
+    include-message: always
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+logging:
+  level:
+    com.tessera.fleet: INFO
+
+# ---------------------------------------------------------------------------
+# Tessera Fleet — Phase 1 configuration (SRS §3.2, Appendix B)
+# ---------------------------------------------------------------------------
+tessera:
+  # A vehicle silent for longer than this resolves to OFFLINE on the map (FR-1.1).
+  offline-after-seconds: 30
+  # Ingestion pull cadence and live-map push cadence. Both well under the
+  # 2-second UI-freshness bound (FR-1.2 / NFR-2).
+  ingest-poll-millis: 1000
+  broadcast-millis: 1000
+
+  # Which live position feed to run.
+  #   SIMULATOR      — deterministic built-in simulator (default; used by tests)
+  #   GTFS_REALTIME  — a real public GTFS-Realtime VehiclePositions feed
+  position-source: ${TESSERA_POSITION_SOURCE:SIMULATOR}
+
+  simulator:
+    vehicle-count: ${TESSERA_SIM_VEHICLES:40}
+    tick-millis: 1000
+    seed: 42
+    available-ratio: 0.7
+
+  gtfs:
+    feed-url: ${TESSERA_GTFS_URL:}
+    api-key: ${TESSERA_GTFS_KEY:}
+    api-key-header: ${TESSERA_GTFS_KEY_HEADER:}
+    poll-millis: 15000
+    agency-label: ${TESSERA_GTFS_AGENCY:}
+
+  # OSM-derived routing graph for travel-time-aware ranking (FR-2.2).
+  road-graph-resource: classpath:roadgraph/roadgraph.json
+
+  nearest:
+    prefilter-radius-meters: 2500
+    max-radius-meters: 12000
+    shortlist-size: 5
+
+  # NFR-7 — accounts permitted to sign in. Dev defaults use {noop} passwords;
+  # override with {bcrypt} hashes via config in any real deployment.
+  users:
+    - username: dispatch
+      password: "{noop}dispatch"
+      role: DISPATCHER
+    - username: ops
+      password: "{noop}ops"
+      role: OPS_MANAGER
+
+---
+spring:
+  config:
+    activate:
+      on-profile: demo
+tessera:
+  simulator:
+    vehicle-count: 40

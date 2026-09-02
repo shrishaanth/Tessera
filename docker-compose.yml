@@ -1,0 +1,51 @@
+# Tessera Fleet — local stack.
+#
+# Phase 1 uses only Redis (the live layer). Postgres/PostGIS/TimescaleDB is
+# included now so Phase 2's durable layer has a target, but the Phase 1 backend
+# does not connect to it.
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Durable layer target for Phase 2+ (PostGIS + TimescaleDB in one image).
+  db:
+    image: timescale/timescaledb-ha:pg16
+    environment:
+      POSTGRES_DB: tessera
+      POSTGRES_USER: tessera
+      POSTGRES_PASSWORD: tessera
+    ports:
+      - "5432:5432"
+    volumes:
+      - tessera-db:/home/postgres/pgdata/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tessera -d tessera"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build:
+      context: .
+      dockerfile: infra/Dockerfile
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      SPRING_PROFILES_ACTIVE: demo
+      TESSERA_POSITION_SOURCE: SIMULATOR
+      TESSERA_SIM_VEHICLES: "40"
+    ports:
+      - "8080:8080"
+
+volumes:
+  tessera-db:
