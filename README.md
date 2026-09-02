@@ -1,154 +1,114 @@
-# Tessera
+# Tessera Fleet
 
-Real-Time Geospatial Tracking Engine — Core v4
+Real-Time Dispatch & Operations Platform. A live map and nearest-available-vehicle
+assignment for a small fleet (20–200 vehicles), built to the SRS in `../srs/`.
 
-Single-node, in-memory spatial tracking with Copy-On-Write Quadtree, HAMT, TCP ingestion, live web map, geofencing, A* routing, and comparative benchmarking.
+The system is two cooperating layers (SRS §2.1):
 
-## Features
+- **Live layer** — an in-memory geospatial index (Redis) holding every vehicle's
+  current position and status. Serves the dispatcher map and nearest-vehicle
+  search with no disk I/O in the decision path.
+- **Durable layer** — PostgreSQL + PostGIS + TimescaleDB for history and
+  reporting. Written asynchronously, never in the critical path. *Arrives in
+  Phase 2.*
 
-- **Spatial Indexing**: Naive, Grid, and Copy-On-Write Quadtree implementations
-- **Persistent Hash Map**: HAMT for O(1) vehicle lookups
-- **TCP Ingestion**: Netty 4.x server with binary protocol and sharding
-- **Deterministic Simulator**: Reproducible vehicle movement for benchmarking
-- **Live Web Map**: Javalin + Leaflet real-time map with WebSocket positions, route requests, and live geofence alerts
-- **Geofencing**: Ray-casting point-in-polygon with ENTER/EXIT alerts
-- **Routing**: A* shortest path on grid and OSM-derived road graphs
-- **Benchmarking**: Comparative throughput/latency harness with CSV and text chart output
+## Status: Phase 1 complete
 
-## Requirements
+Phase 1 delivers the live layer and dispatcher map (SRS §8):
 
-- JDK 17+
-- Maven 3.8+ (optional — direct `javac` works too)
-- Python 3.8+ (only for the one-off OSM data-prep script)
+| Req | Delivered |
+|-----|-----------|
+| FR-1.1 | Live map, vehicles colour-coded by status (available / en route / on site / offline) |
+| FR-1.2 | Positions refresh in the UI within ~1 s of ingestion (WebSocket push) |
+| FR-1.3 | Status filter on the map |
+| FR-1.4 | Vehicle detail: current job, ETA, recent status history |
+| FR-2.1 | Job location (map click) → ranked nearest-available shortlist |
+| FR-2.2 | Ranking by **real road-network travel time** (OSM graph + Dijkstra), not straight-line |
+| FR-2.3 | Shortlist returns well under 1 s |
+| FR-2.4 | Assign a job to a vehicle in one action |
+| FR-7 | Data-source transparency panel; the position feed is disclosed as a substitute |
+| NFR-7 | All API and WebSocket endpoints require an authenticated session |
 
-## Build
+Out of Phase 1: geofencing/dwell (Phase 2), durable persistence (Phase 2),
+reporting (Phase 3), address geocoding & trajectory replay (Phase 4).
+
+## Layout
+
+```
+backend/    Spring Boot 3.4 (Java 21). Live layer, ingestion, routing, REST + WebSocket.
+frontend/   Vite + React + TypeScript. Dispatcher dashboard (Leaflet + OSM).
+infra/      Dockerfile, helper scripts.
+docs/       Phase notes.
+docker-compose.yml   Redis + Postgres/PostGIS/TimescaleDB + backend.
+```
+
+## Run it
+
+### With Docker (preferred)
 
 ```bash
-mvn clean compile
+cd frontend && npm install && npm run build && cd ..
+docker compose up --build
 ```
 
-## Run
+Open <http://localhost:8080>. Sign in with `dispatch` / `dispatch` (or `ops` / `ops`).
+The `demo` profile assigns a few jobs on startup so every status colour appears.
 
-### Live Web Map Demo (default)
+### Without Docker (local dev)
 
-The default demo starts the Netty ingestion server on port 9090, runs a vehicle simulator with 200 vehicles on a real OSM road graph, and serves a live Leaflet map on port 8081.
+Terminal 1 — Redis (uses the binary bundled in the test dependency; run
+`mvn -q -f backend/pom.xml test-compile` once first to download it):
 
 ```bash
-java -cp "target\classes;lib\*" com.geotracker.WebDemoMain
+pwsh ./infra/scripts/run-local-redis.ps1
 ```
 
-On Linux/macOS, use colons for the classpath:
+Terminal 2 — backend:
 
 ```bash
-java -cp "target/classes:lib/*" com.geotracker.WebDemoMain
+cd backend && SPRING_PROFILES_ACTIVE=demo mvn spring-boot:run
 ```
 
-Then open `http://localhost:8081`.
+> Port 8080 in use? Some machines run an Oracle TNS listener there. Start the
+> backend with `PORT=8090 …` and point the frontend at it with
+> `TESSERA_BACKEND=http://localhost:8090`.
 
-To use the legacy synthetic grid instead of the OSM graph:
+Terminal 3 — frontend dev server (proxies to the backend):
 
 ```bash
-java -cp "target\classes;lib\*" com.geotracker.WebDemoMain --grid
+cd frontend && npm install && npm run dev
 ```
 
-### Legacy Swing Dashboard
+Open <http://localhost:5173>.
 
-The original Swing dashboard is still available via `DemoMain`:
+## Live position feed (SRS §2.6, FR-7)
+
+The default feed is a **deterministic simulator** that moves synthetic vehicles
+along a real OpenStreetMap road network — disclosed in-product as *not real data*.
+To use a real public GTFS-Realtime `VehiclePositions` feed instead:
 
 ```bash
-java -cp "target\classes;lib\*" com.geotracker.DemoMain
+TESSERA_POSITION_SOURCE=GTFS_REALTIME \
+TESSERA_GTFS_URL=https://<agency>/vehiclepositions.pb \
+TESSERA_GTFS_AGENCY="<Agency name>" \
+# optional: TESSERA_GTFS_KEY=... TESSERA_GTFS_KEY_HEADER=x-api-key
 ```
 
-### Benchmark
+## Test
 
 ```bash
-java -cp target/classes com.geotracker.benchmark.BenchmarkHarness
+cd backend && mvn verify        # 24 unit + 13 integration (embedded Redis, no Docker)
+cd frontend && npm test         # 9 component/client tests
 ```
 
-## Web Map API
+## Road graph
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/` | GET | Serves the Leaflet map page |
-| `/api/geofences` | GET | Returns zone polygons and bounding boxes as JSON |
-| `/api/route?vehicleId=X&destX=Y&destY=Z` | GET | Returns A* route nodes and total cost |
-| `/ws/positions` | WS | Live vehicle position broadcast (200ms interval) |
-| `/ws/events` | WS | Live geofence ENTER/EXIT events |
-
-## Tests
+`backend/src/main/resources/roadgraph/roadgraph.json` is real OSM data (ODbL) for
+a downtown-Boston demo area, built by `infra/scripts/build_roadgraph.py`. Rebuild
+or retarget:
 
 ```bash
-mvn clean test
+python infra/scripts/build_roadgraph.py \
+  --bbox <south,west,north,east> --name "<Area>" \
+  --out backend/src/main/resources/roadgraph/roadgraph.json
 ```
-
-## Project Structure
-
-```
-src/main/java/com/geotracker/
-├── benchmark/       # BenchmarkHarness, LatencyRecorder
-├── dashboard/       # SwingDashboard, ConsoleDashboard
-├── geofence/        # GeofenceEngine, RayCaster
-├── index/           # CowQuadtree, GridIndex, NaiveIndex, HamtIndex, IndexerThread
-├── ingestion/       # NettyIngestionServer, PositionUpdateDecoder, ShardRouter
-├── model/           # PositionUpdate, Position, BoundingBox, RouteResult, ZoneEvent
-├── routing/         # RoadGraph, AStarRouter, GeoUtils
-├── simulator/       # VehicleSimulator, SimulatorClient, VehicleSpawnHelper
-├── util/            # RingBuffer, Config
-└── web/             # Javalin WebServer (REST + WebSocket)
-src/main/resources/
-├── public/          # Leaflet frontend (index.html, app.js)
-└── roadgraph/       # OSM-derived road graph JSON (osm-roadgraph.json)
-scripts/
-└── fetch_osm.py     # One-off Overpass API data-prep script
-```
-
-## Configuration
-
-Key settings in `Config.java`:
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `PORT` | 9090 | Netty server port |
-| `WEB_PORT` | 8081 | Javalin web map port |
-| `SHARDS` | 4 | Number of shards |
-| `VEHICLE_COUNT` | 1000 | Benchmark vehicle count |
-| `DEMO_VEHICLE_COUNT` | 200 | Demo vehicle count |
-| `UPDATE_RATE_HZ` | 5.0 | Simulation update frequency |
-| `PUBLISH_MAX_DIRTY` | 50 | Max dirty updates before publish |
-| `PUBLISH_INTERVAL_MS` | 20 | Max publish interval |
-| `AREA_MIN_LAT` | 47.646 | OSM area south boundary |
-| `AREA_MAX_LAT` | 47.650 | OSM area north boundary |
-| `AREA_MIN_LNG` | -122.334 | OSM area west boundary |
-| `AREA_MAX_LNG` | -122.330 | OSM area east boundary |
-| `AREA_NAME` | Gas Works Park, Seattle, WA | Human-readable area name |
-| `ROADGRAPH_RESOURCE` | `/roadgraph/osm-roadgraph.json` | Classpath resource for OSM graph |
-
-## OSM Data Preparation
-
-The OSM road graph is fetched once using the Overpass API and serialized to `src/main/resources/roadgraph/osm-roadgraph.json`. It is not fetched at runtime.
-
-To refresh the graph for a different area, edit the bounding box in `scripts/fetch_osm.py` and run:
-
-```bash
-python scripts/fetch_osm.py
-```
-
-## Benchmark Results
-
-Sample results from a local run (machine-dependent):
-
-| Index | Throughput (ops/sec) | Update p50 (ms) | Query p50 (ms) |
-|-------|---------------------|-----------------|----------------|
-| NaiveIndex | ~59K | 0.00 | 0.01 |
-| GridIndex | ~216K | 0.00 | 0.00 |
-| CowQuadtree | ~372K | 0.00 | 0.00 |
-
-- Vehicle count: 1000
-- Operations: 10000
-- Benchmark measures update throughput and range-query latency.
-- HAMT is used for O(1) vehicle lookups, not as a spatial-index competitor in this benchmark.
-- Results vary by machine and JVM state. Run the benchmark harness for current measurements.
-
-## License
-
-Student project

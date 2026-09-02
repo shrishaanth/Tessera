@@ -1,5 +1,0 @@
-Throughput Comparison (ops/sec)
-=================================
-NaiveIndex      | =========      91636 ops/sec
-GridIndex       | =================================     338011 ops/sec
-CowQuadtree     | ========================================     400423 ops/sec

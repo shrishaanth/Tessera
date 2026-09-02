@@ -1,4 +1,0 @@
-name,throughput,p50,p95,p99,mean
-NaiveIndex,91636.3,0.00,0.00,0.00,0.00
-GridIndex,338011.4,0.00,0.00,0.01,0.00
-CowQuadtree,400422.8,0.00,0.00,0.00,0.00
