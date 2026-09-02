@@ -17,6 +17,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param simulator           deterministic simulator settings.
  * @param gtfs                real GTFS-Realtime feed settings.
  * @param roadGraphResource   classpath location of the OSM-derived routing graph.
+ * @param geofence            geofencing &amp; dwell-time tuning (FR-3).
+ * @param durable             durable-layer write-behind settings (SRS §3.1).
  * @param users               accounts permitted to sign in (NFR-7).
  */
 @ConfigurationProperties(prefix = "tessera")
@@ -29,6 +31,8 @@ public record FleetProperties(
         Simulator simulator,
         Gtfs gtfs,
         String roadGraphResource,
+        Geofence geofence,
+        Durable durable,
         List<User> users) {
 
     public enum PositionSourceType { SIMULATOR, GTFS_REALTIME }
@@ -61,6 +65,33 @@ public record FleetProperties(
      */
     public record Gtfs(String feedUrl, String apiKey, String apiKeyHeader,
                        long pollMillis, String agencyLabel) { }
+
+    /**
+     * @param debounceSeconds          minimum time a vehicle must remain on the new
+     *        side of a site boundary before an enter/exit is treated as real,
+     *        suppressing GPS jitter (FR-3.4).
+     * @param defaultDwellAlertSeconds default threshold above which an on-site
+     *        dwell raises a dispatcher alert; a site may override it (FR-3.5).
+     */
+    public record Geofence(int debounceSeconds, int defaultDwellAlertSeconds) { }
+
+    /**
+     * @param mode          {@code in-memory} or {@code postgres}.
+     * @param queueCapacity bounded write-behind queue size; overflow is dropped
+     *        and counted, never blocked (SRS §2.5).
+     * @param batchSize     max rows per durable insert batch.
+     * @param flushMillis   max time a partial batch waits before being written.
+     * @param datasource    PostgreSQL connection settings (used when mode=postgres).
+     */
+    public record Durable(String mode, int queueCapacity, int batchSize, long flushMillis,
+                          DataSource datasource) {
+
+        public boolean postgres() {
+            return "postgres".equalsIgnoreCase(mode);
+        }
+    }
+
+    public record DataSource(String url, String username, String password) { }
 
     /**
      * @param username raw username.

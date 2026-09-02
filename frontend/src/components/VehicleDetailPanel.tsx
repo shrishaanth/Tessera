@@ -63,6 +63,14 @@ export function VehicleDetailPanel({ vehicleId, onClose }: { vehicleId: string; 
         <span className="mono">{fmtClock(v.lastReportEpochMs)}</span>
       </div>
 
+      {detail.onSiteName && (
+        <div className="kv">
+          <span>On site</span>
+          <span style={{ color: "var(--status-on-site)", fontWeight: 700 }}>
+            {detail.onSiteName}
+          </span>
+        </div>
+      )}
       <div className="kv">
         <span>Current job</span>
         <span>{detail.currentJob ? detail.currentJob.id : "—"}</span>
@@ -80,6 +88,25 @@ export function VehicleDetailPanel({ vehicleId, onClose }: { vehicleId: string; 
             <span>ETA</span>
             <span className="mono">{fmtEta(detail.etaSeconds)}</span>
           </div>
+        </>
+      )}
+
+      {detail.recentGeofenceEvents.length > 0 && (
+        <>
+          <div className="label-xs" style={{ marginTop: 12 }}>
+            Recent site visits
+          </div>
+          {detail.recentGeofenceEvents.map((e, i) => (
+            <div className="hist" key={i}>
+              <span className="t">{fmtClock(e.epochMillis)}</span>
+              <span>
+                {e.type === "ENTER" ? "entered" : "left"} {e.siteId}
+                {e.type === "EXIT" && e.dwellSeconds != null
+                  ? ` · ${Math.round(e.dwellSeconds / 60)} min`
+                  : ""}
+              </span>
+            </div>
+          ))}
         </>
       )}
 

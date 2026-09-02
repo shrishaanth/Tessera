@@ -27,6 +27,10 @@ public final class TestFixtures {
                 new FleetProperties.Simulator(20, 1000L, 42L, 0.7),
                 new FleetProperties.Gtfs(null, null, null, 15000L, null),
                 ROAD_GRAPH_RESOURCE,
+                new FleetProperties.Geofence(20, 1800),
+                new FleetProperties.Durable("in-memory", 50000, 500, 1000L,
+                        new FleetProperties.DataSource("jdbc:postgresql://localhost/tessera",
+                                "tessera", "tessera")),
                 List.of(new FleetProperties.User("dispatch", "{noop}dispatch", "DISPATCHER")));
     }
 

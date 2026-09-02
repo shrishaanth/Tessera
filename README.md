@@ -9,12 +9,13 @@ The system is two cooperating layers (SRS §2.1):
   current position and status. Serves the dispatcher map and nearest-vehicle
   search with no disk I/O in the decision path.
 - **Durable layer** — PostgreSQL + PostGIS + TimescaleDB for history and
-  reporting. Written asynchronously, never in the critical path. *Arrives in
-  Phase 2.*
+  reporting. Written asynchronously (write-behind), never in the critical path.
+  Behind a `DurableStore` seam with an in-memory default, so the system runs with
+  no database and live dispatch is unaffected if the database is down (NFR-3).
 
-## Status: Phase 1 complete
+## Status: Phases 1–2 complete
 
-Phase 1 delivers the live layer and dispatcher map (SRS §8):
+**Phase 1 — live layer & dispatcher map (SRS §8)**
 
 | Req | Delivered |
 |-----|-----------|
@@ -22,15 +23,23 @@ Phase 1 delivers the live layer and dispatcher map (SRS §8):
 | FR-1.2 | Positions refresh in the UI within ~1 s of ingestion (WebSocket push) |
 | FR-1.3 | Status filter on the map |
 | FR-1.4 | Vehicle detail: current job, ETA, recent status history |
-| FR-2.1 | Job location (map click) → ranked nearest-available shortlist |
-| FR-2.2 | Ranking by **real road-network travel time** (OSM graph + Dijkstra), not straight-line |
-| FR-2.3 | Shortlist returns well under 1 s |
-| FR-2.4 | Assign a job to a vehicle in one action |
-| FR-7 | Data-source transparency panel; the position feed is disclosed as a substitute |
+| FR-2.1–2.4 | Map-click job location → road-network-ranked shortlist (< 1 s) → one-action assign |
+| FR-7 | Data-source transparency panel; substitute feeds disclosed plainly |
 | NFR-7 | All API and WebSocket endpoints require an authenticated session |
 
-Out of Phase 1: geofencing/dwell (Phase 2), durable persistence (Phase 2),
-reporting (Phase 3), address geocoding & trajectory replay (Phase 4).
+**Phase 2 — geofencing & durable persistence (SRS §8)**
+
+| Req | Delivered |
+|-----|-----------|
+| FR-3.1 | Define a customer site as a polygon (draw on map) or a centre + radius |
+| FR-3.2 | Automatic enter/exit detection per position fix, timestamped, recorded |
+| FR-3.3 | Dwell time computed and stored on each exit |
+| FR-3.4 | Debounced boundary transitions — a crossing that reverses within the window is ignored |
+| FR-3.5 | Dispatcher alert when dwell exceeds a per-site (or default) threshold; Alerts feed + acknowledge |
+| SRS §3.1 | Every position and geofence event written durably via a bounded write-behind queue |
+| SRS §2.5 / NFR-3 | Queue-full or DB-down → drop + count, health degraded; live dispatch keeps running |
+
+Out now: reporting (Phase 3), address geocoding & trajectory replay (Phase 4).
 
 ## Layout
 
@@ -79,7 +88,23 @@ Terminal 3 — frontend dev server (proxies to the backend):
 cd frontend && npm install && npm run dev
 ```
 
-Open <http://localhost:5173>.
+Open <http://localhost:5173>. Without the `durable` profile the backend uses an
+in-memory durable store (history lost on restart; live dispatch unaffected).
+
+## Durable layer (Phase 2, SRS §3.1)
+
+By default the durable store is **in-memory**. For real persistence — PostgreSQL
++ PostGIS + TimescaleDB — run with the `durable` profile against the compose `db`
+service (or any such database):
+
+```bash
+SPRING_PROFILES_ACTIVE=demo,durable \
+DB_URL=jdbc:postgresql://localhost:5432/tessera DB_USER=tessera DB_PASSWORD=tessera \
+mvn -f backend/pom.xml spring-boot:run
+```
+
+Flyway creates the schema (`positions` hypertable, `sites` with a GiST index,
+`geofence_events`, `jobs`). `docker compose up` runs the app with this profile.
 
 ## Live position feed (SRS §2.6, FR-7)
 
@@ -97,8 +122,9 @@ TESSERA_GTFS_AGENCY="<Agency name>" \
 ## Test
 
 ```bash
-cd backend && mvn verify        # 24 unit + 13 integration (embedded Redis, no Docker)
-cd frontend && npm test         # 9 component/client tests
+cd backend && mvn verify   # 52 unit + 19 integration (embedded Redis + in-memory durable, no Docker)
+                           # + 4 PostGIS/TimescaleDB ITs, auto-skipped when Docker is absent
+cd frontend && npm test    # 15 component/client tests
 ```
 
 ## Road graph

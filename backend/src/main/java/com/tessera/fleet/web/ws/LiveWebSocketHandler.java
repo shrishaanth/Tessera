@@ -16,6 +16,8 @@ import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 
+import com.tessera.fleet.alert.Alert;
+import com.tessera.fleet.durable.GeofenceEventRecord;
 import com.tessera.fleet.model.Vehicle;
 
 /**
@@ -57,17 +59,40 @@ public class LiveWebSocketHandler extends TextWebSocketHandler {
 
     /** Serialize and fan out a fleet snapshot to every open session. */
     public void broadcastFleet(List<Vehicle> vehicles) {
+        broadcast(Map.of(
+                "type", "fleet",
+                "ts", System.currentTimeMillis(),
+                "vehicles", vehicles));
+    }
+
+    /** Push a debounced geofence enter/exit as it happens (FR-3.2). */
+    public void broadcastGeofenceEvent(GeofenceEventRecord event, String siteName) {
+        broadcast(Map.of(
+                "type", "geofence",
+                "ts", System.currentTimeMillis(),
+                "event", Map.of(
+                        "vehicleId", event.vehicleId(),
+                        "siteId", event.siteId(),
+                        "siteName", siteName == null ? "" : siteName,
+                        "eventType", event.type().name(),
+                        "epochMillis", event.epochMillis(),
+                        "dwellSeconds", event.dwellSeconds() == null ? -1 : event.dwellSeconds())));
+    }
+
+    /** Push a new dispatcher alert (FR-3.5). */
+    public void broadcastAlert(Alert alert) {
+        broadcast(Map.of("type", "alert", "ts", System.currentTimeMillis(), "alert", alert));
+    }
+
+    private void broadcast(Object payloadObject) {
         if (sessions.isEmpty()) {
             return;
         }
         String payload;
         try {
-            payload = objectMapper.writeValueAsString(Map.of(
-                    "type", "fleet",
-                    "ts", System.currentTimeMillis(),
-                    "vehicles", vehicles));
+            payload = objectMapper.writeValueAsString(payloadObject);
         } catch (IOException e) {
-            log.warn("Failed to serialize fleet snapshot: {}", e.toString());
+            log.warn("Failed to serialize WS frame: {}", e.toString());
             return;
         }
         TextMessage message = new TextMessage(payload);

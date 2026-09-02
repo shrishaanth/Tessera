@@ -1,9 +1,13 @@
 import type {
+  Alert,
   CreateJobResponse,
   DataSourceInfo,
+  GeofenceEventRecord,
   Identity,
   Job,
   NearestVehicle,
+  SiteDefinition,
+  SiteView,
   Vehicle,
   VehicleDetail,
   VehicleStatus,
@@ -71,6 +75,28 @@ export const api = {
     }),
 
   dataSources: () => req<DataSourceInfo[]>("/api/data-sources"),
+
+  sites: () => req<SiteView[]>("/api/sites"),
+
+  createSite: (def: SiteDefinition) =>
+    req<SiteView>("/api/sites", { method: "POST", body: JSON.stringify(def) }),
+
+  deleteSite: (id: string) =>
+    req<void>(`/api/sites/${encodeURIComponent(id)}`, { method: "DELETE" }),
+
+  alerts: (includeAcknowledged = false) =>
+    req<Alert[]>(`/api/alerts?includeAcknowledged=${includeAcknowledged}`),
+
+  ackAlert: (id: string) =>
+    req<Alert>(`/api/alerts/${encodeURIComponent(id)}/ack`, { method: "POST" }),
+
+  geofenceEvents: (params: { vehicleId?: string; siteId?: string; limit?: number } = {}) => {
+    const q = new URLSearchParams();
+    if (params.vehicleId) q.set("vehicleId", params.vehicleId);
+    if (params.siteId) q.set("siteId", params.siteId);
+    q.set("limit", String(params.limit ?? 100));
+    return req<GeofenceEventRecord[]>(`/api/geofence-events?${q.toString()}`);
+  },
 };
 
 export const STATUS_COLOR: Record<VehicleStatus, string> = {

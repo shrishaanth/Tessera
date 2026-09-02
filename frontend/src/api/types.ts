@@ -28,11 +28,55 @@ export interface Job {
   assignedAtEpochMs: number;
 }
 
+export interface GeofenceEventRecord {
+  vehicleId: string;
+  siteId: string;
+  type: "ENTER" | "EXIT";
+  epochMillis: number;
+  dwellSeconds: number | null;
+}
+
 export interface VehicleDetail {
   vehicle: Vehicle;
   currentJob: Job | null;
   etaSeconds: number | null;
+  onSiteName: string | null;
+  recentGeofenceEvents: GeofenceEventRecord[];
   statusHistory: StatusChange[];
+}
+
+export interface SiteView {
+  id: string;
+  name: string;
+  address: string | null;
+  kind: "POLYGON" | "RADIUS";
+  outline: [number, number][];
+  centerLat: number | null;
+  centerLon: number | null;
+  radiusMeters: number | null;
+  dwellAlertSeconds: number | null;
+  createdAtEpochMs: number;
+}
+
+export interface SiteDefinition {
+  name: string;
+  address?: string | null;
+  polygon?: [number, number][] | null;
+  centerLat?: number | null;
+  centerLon?: number | null;
+  radiusMeters?: number | null;
+  dwellAlertSeconds?: number | null;
+}
+
+export interface Alert {
+  id: string;
+  type: "DWELL_EXCEEDED";
+  severity: "INFO" | "WARNING";
+  vehicleId: string | null;
+  siteId: string | null;
+  message: string;
+  createdAtEpochMs: number;
+  acknowledged: boolean;
 }
 
 export interface NearestVehicle {
@@ -69,3 +113,26 @@ export interface FleetFrame {
   ts: number;
   vehicles: Vehicle[];
 }
+
+export interface GeofenceEventFrameData {
+  vehicleId: string;
+  siteId: string;
+  siteName: string;
+  eventType: "ENTER" | "EXIT";
+  epochMillis: number;
+  dwellSeconds: number;
+}
+
+export interface GeofenceFrame {
+  type: "geofence";
+  ts: number;
+  event: GeofenceEventFrameData;
+}
+
+export interface AlertFrame {
+  type: "alert";
+  ts: number;
+  alert: Alert;
+}
+
+export type LiveFrame = FleetFrame | GeofenceFrame | AlertFrame;

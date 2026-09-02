@@ -84,6 +84,21 @@ public class LiveFleetService {
         recordTransitionIfChanged(vehicleId, System.currentTimeMillis());
     }
 
+    /** Record which customer site a vehicle is inside (FR-3.2); drives ON_SITE. */
+    public void setOnSite(String vehicleId, String siteId) {
+        if (siteId == null) {
+            clearOnSite(vehicleId);
+            return;
+        }
+        redis.opsForHash().put(vehicleKey(vehicleId), "onSiteId", siteId);
+        recordTransitionIfChanged(vehicleId, System.currentTimeMillis());
+    }
+
+    public void clearOnSite(String vehicleId) {
+        redis.opsForHash().delete(vehicleKey(vehicleId), "onSiteId");
+        recordTransitionIfChanged(vehicleId, System.currentTimeMillis());
+    }
+
     // ---------------------------------------------------------------- queries
 
     public List<Vehicle> allVehicles() {
@@ -201,8 +216,10 @@ public class LiveFleetService {
         long lastReport = parseLong(h.get("lastReport"));
         String driver = h.get("driver") != null ? h.get("driver").toString() : null;
         String jobId = h.get("jobId") != null ? h.get("jobId").toString() : null;
-        VehicleStatus status = statusResolver.resolve(lastReport, nowEpochMs, jobId != null, false);
-        return new Vehicle(id, driver, status, lat, lon, heading, speed, lastReport, jobId);
+        String onSiteId = h.get("onSiteId") != null ? h.get("onSiteId").toString() : null;
+        VehicleStatus status = statusResolver.resolve(
+                lastReport, nowEpochMs, jobId != null, onSiteId != null);
+        return new Vehicle(id, driver, status, lat, lon, heading, speed, lastReport, jobId, onSiteId);
     }
 
     private void recordTransitionIfChanged(String id, long nowEpochMs) {
@@ -213,7 +230,8 @@ public class LiveFleetService {
         }
         long lastReport = parseLong(h.get("lastReport"));
         boolean hasJob = h.get("jobId") != null;
-        VehicleStatus resolved = statusResolver.resolve(lastReport, nowEpochMs, hasJob, false);
+        boolean onSite = h.get("onSiteId") != null;
+        VehicleStatus resolved = statusResolver.resolve(lastReport, nowEpochMs, hasJob, onSite);
         String prev = h.get("status") != null ? h.get("status").toString() : null;
         if (!resolved.name().equals(prev)) {
             redis.opsForHash().put(key, "status", resolved.name());

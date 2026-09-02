@@ -14,6 +14,16 @@ spring:
           enabled: true
           max-active: 16
           max-idle: 8
+  # The durable layer is wired manually (see DurableConfig, profile "durable"),
+  # so Boot's DataSource/JDBC/Flyway auto-configuration stays out of the way.
+  # Without the "durable" profile the system runs on an in-memory durable store —
+  # live dispatch is unaffected either way (SRS §2.5, NFR-3).
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceTransactionManagerAutoConfiguration
+      - org.springframework.boot.autoconfigure.jdbc.JdbcTemplateAutoConfiguration
+      - org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration
 
 server:
   port: ${PORT:8080}
@@ -29,13 +39,14 @@ management:
     health:
       probes:
         enabled: true
+      show-details: always
 
 logging:
   level:
     com.tessera.fleet: INFO
 
 # ---------------------------------------------------------------------------
-# Tessera Fleet — Phase 1 configuration (SRS §3.2, Appendix B)
+# Tessera Fleet configuration (SRS §3.2, Appendix B)
 # ---------------------------------------------------------------------------
 tessera:
   # A vehicle silent for longer than this resolves to OFFLINE on the map (FR-1.1).
@@ -71,6 +82,28 @@ tessera:
     max-radius-meters: 12000
     shortlist-size: 5
 
+  # Geofencing & dwell-time tracking (FR-3).
+  geofence:
+    # Minimum time a vehicle must stay on the new side of a boundary before an
+    # enter/exit is treated as real — debounces GPS jitter (FR-3.4).
+    debounce-seconds: 20
+    # Default dwell-time alert threshold; a site may override it (FR-3.5).
+    default-dwell-alert-seconds: 1800
+
+  # Durable layer write-behind (SRS §3.1). The queue is bounded; when it is full
+  # or the database is unreachable, positions are dropped and counted — the live
+  # path is never blocked (SRS §2.5).
+  durable:
+    # in-memory (default) | postgres (activated by the "durable" profile)
+    mode: ${TESSERA_DURABLE_MODE:in-memory}
+    queue-capacity: 50000
+    batch-size: 500
+    flush-millis: 1000
+    datasource:
+      url: ${DB_URL:jdbc:postgresql://localhost:5432/tessera}
+      username: ${DB_USER:tessera}
+      password: ${DB_PASSWORD:tessera}
+
   # NFR-7 — accounts permitted to sign in. Dev defaults use {noop} passwords;
   # override with {bcrypt} hashes via config in any real deployment.
   users:
@@ -89,3 +122,19 @@ spring:
 tessera:
   simulator:
     vehicle-count: 40
+  # Tighter thresholds so geofence enters/exits and dwell alerts are visible
+  # within a short demo session rather than a real shift.
+  geofence:
+    debounce-seconds: 6
+    # Low so a slow pass through a demo site trips a dwell alert within a
+    # short session; a real deployment uses minutes (see the default above).
+    default-dwell-alert-seconds: 25
+
+---
+spring:
+  config:
+    activate:
+      on-profile: durable
+tessera:
+  durable:
+    mode: postgres

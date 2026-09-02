@@ -11,16 +11,19 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
 import com.tessera.fleet.config.FleetProperties;
+import com.tessera.fleet.geofence.SiteDefinition;
+import com.tessera.fleet.geofence.SiteService;
 import com.tessera.fleet.job.JobService;
 import com.tessera.fleet.live.LiveFleetService;
 import com.tessera.fleet.model.Job;
 import com.tessera.fleet.model.Vehicle;
 
 /**
- * Development convenience only (profile {@code demo}): once the live layer has
- * vehicles, assign a few of them jobs so the dispatcher map shows every status
- * colour (FR-1.1) without anyone having to click. Never active in tests or
- * production.
+ * Development convenience only (profile {@code demo}): seed a couple of customer
+ * sites in the demo area and, once the live layer has vehicles, assign a few of
+ * them jobs — so the dispatcher map shows every status colour (FR-1.1) and
+ * geofence enters/exits fire without anyone having to click. Never active in
+ * tests or production.
  */
 @Component
 @Profile("demo")
@@ -30,12 +33,14 @@ public class DemoBootstrap implements ApplicationRunner {
 
     private final LiveFleetService liveFleet;
     private final JobService jobService;
+    private final SiteService siteService;
     private final double availableRatio;
 
     public DemoBootstrap(LiveFleetService liveFleet, JobService jobService,
-                         FleetProperties properties) {
+                         SiteService siteService, FleetProperties properties) {
         this.liveFleet = liveFleet;
         this.jobService = jobService;
+        this.siteService = siteService;
         this.availableRatio = properties.simulator() != null
                 ? properties.simulator().availableRatio() : 0.7;
     }
@@ -47,8 +52,28 @@ public class DemoBootstrap implements ApplicationRunner {
         t.start();
     }
 
+    private void seedSites() {
+        if (!siteService.list().isEmpty()) {
+            return;
+        }
+        // Radius sites on busy points of the downtown-Boston demo road network.
+        siteService.create(new SiteDefinition("Downtown Crossing Depot",
+                "Washington St & Summer St", null, 42.35560, -71.06030, 150.0, null));
+        siteService.create(new SiteDefinition("North Station Yard",
+                "Causeway St", null, 42.36585, -71.06110, 160.0, 120));
+        // A polygon site around Boston Common's north-east corner. Low dwell
+        // threshold so a normal pass-through raises a demo alert (FR-3.5).
+        siteService.create(new SiteDefinition("Common Depot", "Tremont St", List.of(
+                List.of(42.35520, -71.06490),
+                List.of(42.35520, -71.06210),
+                List.of(42.35700, -71.06210),
+                List.of(42.35700, -71.06490)), null, null, null, 12));
+        log.info("Demo bootstrap: seeded {} sites", siteService.list().size());
+    }
+
     private void seed() {
         try {
+            seedSites();
             List<Vehicle> vehicles = List.of();
             for (int i = 0; i < 40 && vehicles.size() < 4; i++) {
                 Thread.sleep(500);

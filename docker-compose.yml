@@ -1,8 +1,6 @@
-# Tessera Fleet — local stack.
-#
-# Phase 1 uses only Redis (the live layer). Postgres/PostGIS/TimescaleDB is
-# included now so Phase 2's durable layer has a target, but the Phase 1 backend
-# does not connect to it.
+# Tessera Fleet — local stack: Redis (live layer) + PostgreSQL/PostGIS/TimescaleDB
+# (durable layer) + the backend (serving the built SPA). The backend runs the
+# 'demo,durable' profiles here.
 services:
   redis:
     image: redis:7-alpine
@@ -38,10 +36,15 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      db:
+        condition: service_healthy
     environment:
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      SPRING_PROFILES_ACTIVE: demo
+      SPRING_PROFILES_ACTIVE: demo,durable
+      DB_URL: jdbc:postgresql://db:5432/tessera
+      DB_USER: tessera
+      DB_PASSWORD: tessera
       TESSERA_POSITION_SOURCE: SIMULATOR
       TESSERA_SIM_VEHICLES: "40"
     ports:

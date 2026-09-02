@@ -30,7 +30,7 @@ class NearestVehicleServiceTest {
 
     private static Vehicle vehicle(String id, VehicleStatus status, double lat, double lon) {
         return new Vehicle(id, id + "-driver", status, lat, lon,
-                0.0, 20.0, System.currentTimeMillis(), null);
+                0.0, 20.0, System.currentTimeMillis(), null, null);
     }
 
     private static GeoCandidate candidate(String id, double lat, double lon) {

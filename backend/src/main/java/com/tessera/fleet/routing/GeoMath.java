@@ -19,6 +19,26 @@ public final class GeoMath {
         return 2 * EARTH_RADIUS_M * Math.asin(Math.min(1.0, Math.sqrt(a)));
     }
 
+    /**
+     * The point reached by travelling {@code distanceMeters} from
+     * ({@code lat},{@code lon}) along an initial {@code bearingDeg}. Returns
+     * {@code [lat, lon]} in degrees. Used to draw metric circles for
+     * radius-defined geofences.
+     */
+    public static double[] destinationPoint(double lat, double lon,
+                                            double bearingDeg, double distanceMeters) {
+        double angular = distanceMeters / EARTH_RADIUS_M;
+        double brng = Math.toRadians(bearingDeg);
+        double phi1 = Math.toRadians(lat);
+        double lambda1 = Math.toRadians(lon);
+        double phi2 = Math.asin(Math.sin(phi1) * Math.cos(angular)
+                + Math.cos(phi1) * Math.sin(angular) * Math.cos(brng));
+        double lambda2 = lambda1 + Math.atan2(
+                Math.sin(brng) * Math.sin(angular) * Math.cos(phi1),
+                Math.cos(angular) - Math.sin(phi1) * Math.sin(phi2));
+        return new double[] {Math.toDegrees(phi2), Math.toDegrees(lambda2)};
+    }
+
     /** Initial bearing in degrees (0–360) from point 1 to point 2. */
     public static double bearingDegrees(double lat1, double lon1, double lat2, double lon2) {
         double p1 = Math.toRadians(lat1);

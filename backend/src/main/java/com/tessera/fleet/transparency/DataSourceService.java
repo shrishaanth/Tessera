@@ -5,6 +5,7 @@ import java.util.List;
 
 import org.springframework.stereotype.Service;
 
+import com.tessera.fleet.config.FleetProperties;
 import com.tessera.fleet.ingestion.PositionSource;
 import com.tessera.fleet.routing.TravelTimeService;
 import com.tessera.fleet.transparency.DataSourceInfo.Role;
@@ -19,10 +20,13 @@ public class DataSourceService {
 
     private final PositionSource positionSource;
     private final TravelTimeService travelTime;
+    private final FleetProperties properties;
 
-    public DataSourceService(PositionSource positionSource, TravelTimeService travelTime) {
+    public DataSourceService(PositionSource positionSource, TravelTimeService travelTime,
+                             FleetProperties properties) {
         this.positionSource = positionSource;
         this.travelTime = travelTime;
+        this.properties = properties;
     }
 
     public List<DataSourceInfo> list() {
@@ -57,6 +61,23 @@ public class DataSourceService {
                 Role.PRODUCTION,
                 "Free tile service. Subject to the OSMF tile usage policy; a dedicated "
                         + "tile provider would be used at production scale.",
+                true));
+
+        boolean postgres = properties.durable().postgres();
+        out.add(new DataSourceInfo(
+                "durable-store",
+                postgres ? "PostgreSQL + PostGIS + TimescaleDB" : "In-memory durable store",
+                postgres ? "Self-hosted" : "None (process memory)",
+                "Durable history of positions and geofence events; historical reporting",
+                Role.PRODUCTION,
+                postgres
+                        ? "Self-hosted database. PostGIS for spatial types/indexing, "
+                            + "TimescaleDB for time-series history. Written asynchronously "
+                            + "(write-behind) so it is never on the live dispatch path."
+                        : "No database configured — position and geofence history is kept "
+                            + "only in this process's memory and is lost on restart. Live "
+                            + "dispatch is unaffected. Enable the 'durable' profile for "
+                            + "PostgreSQL + PostGIS + TimescaleDB.",
                 true));
 
         return out;

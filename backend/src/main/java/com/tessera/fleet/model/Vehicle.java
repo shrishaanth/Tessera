@@ -12,6 +12,8 @@ package com.tessera.fleet.model;
  * @param speedKph        last known speed, or {@code NaN}
  * @param lastReportEpochMs timestamp of the last position report
  * @param currentJobId    id of the assigned job, or {@code null}
+ * @param onSiteId        id of the customer site the vehicle is currently inside
+ *        (Phase 2 geofencing), or {@code null}
  */
 public record Vehicle(
         String vehicleId,
@@ -22,5 +24,6 @@ public record Vehicle(
         double headingDeg,
         double speedKph,
         long lastReportEpochMs,
-        String currentJobId) {
+        String currentJobId,
+        String onSiteId) {
 }

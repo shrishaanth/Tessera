@@ -9,6 +9,10 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.tessera.fleet.durable.DurableStore;
+import com.tessera.fleet.durable.GeofenceEventRecord;
+import com.tessera.fleet.geofence.Site;
+import com.tessera.fleet.geofence.SiteService;
 import com.tessera.fleet.job.JobService;
 import com.tessera.fleet.live.LiveFleetService;
 import com.tessera.fleet.model.Job;
@@ -31,21 +35,29 @@ public class VehicleController {
     private final NearestVehicleService nearestVehicleService;
     private final JobService jobService;
     private final TravelTimeService travelTime;
+    private final SiteService siteService;
+    private final DurableStore durableStore;
 
     public VehicleController(LiveFleetService liveFleet,
                              NearestVehicleService nearestVehicleService,
                              JobService jobService,
-                             TravelTimeService travelTime) {
+                             TravelTimeService travelTime,
+                             SiteService siteService,
+                             DurableStore durableStore) {
         this.liveFleet = liveFleet;
         this.nearestVehicleService = nearestVehicleService;
         this.jobService = jobService;
         this.travelTime = travelTime;
+        this.siteService = siteService;
+        this.durableStore = durableStore;
     }
 
     public record VehicleDetail(
             Vehicle vehicle,
             Job currentJob,
             Double etaSeconds,
+            String onSiteName,
+            List<GeofenceEventRecord> recentGeofenceEvents,
             List<StatusChange> statusHistory) { }
 
     /** Full fleet snapshot, optionally filtered by status (FR-1.1, FR-1.3). */
@@ -74,8 +86,12 @@ public class VehicleController {
                     job.destLatitude(), job.destLongitude());
             eta = Double.isInfinite(seconds) ? null : seconds;
         }
+        String onSiteName = vehicle.onSiteId() == null ? null
+                : siteService.get(vehicle.onSiteId()).map(Site::name).orElse(vehicle.onSiteId());
         return ResponseEntity.ok(new VehicleDetail(
-                vehicle, job, eta, liveFleet.statusHistory(vehicleId)));
+                vehicle, job, eta, onSiteName,
+                durableStore.recentGeofenceEvents(vehicleId, null, 10),
+                liveFleet.statusHistory(vehicleId)));
     }
 
     /**

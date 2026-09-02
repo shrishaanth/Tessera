@@ -1,5 +1,14 @@
-import { CircleMarker, MapContainer, TileLayer, Tooltip, useMapEvents } from "react-leaflet";
-import type { NearestVehicle, Vehicle } from "../api/types";
+import {
+  Circle,
+  CircleMarker,
+  MapContainer,
+  Polygon,
+  Polyline,
+  TileLayer,
+  Tooltip,
+  useMapEvents,
+} from "react-leaflet";
+import type { NearestVehicle, SiteView, Vehicle } from "../api/types";
 import { STATUS_COLOR } from "../api/client";
 
 interface Props {
@@ -9,14 +18,16 @@ interface Props {
   jobDraft: { lat: number; lon: number } | null;
   onMapClick: (lat: number, lon: number) => void;
   shortlist: NearestVehicle[];
+  sites: SiteView[];
+  drawPoints: [number, number][];
 }
 
 function ClickCapture({ onClick }: { onClick: (lat: number, lon: number) => void }) {
-  useMapEvents({
-    click: (e) => onClick(e.latlng.lat, e.latlng.lng),
-  });
+  useMapEvents({ click: (e) => onClick(e.latlng.lat, e.latlng.lng) });
   return null;
 }
+
+const SITE_STYLE = { color: "#c98a1f", weight: 2, fillColor: "#c98a1f", fillOpacity: 0.12 };
 
 export function MapCanvas({
   vehicles,
@@ -25,6 +36,8 @@ export function MapCanvas({
   jobDraft,
   onMapClick,
   shortlist,
+  sites,
+  drawPoints,
 }: Props) {
   const shortlistIds = new Set(shortlist.map((s) => s.vehicleId));
 
@@ -35,6 +48,37 @@ export function MapCanvas({
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
       <ClickCapture onClick={onMapClick} />
+
+      {sites.map((s) =>
+        s.kind === "RADIUS" && s.centerLat != null && s.centerLon != null && s.radiusMeters ? (
+          <Circle
+            key={s.id}
+            center={[s.centerLat, s.centerLon]}
+            radius={s.radiusMeters}
+            pathOptions={SITE_STYLE}
+          >
+            <Tooltip>{s.name}</Tooltip>
+          </Circle>
+        ) : (
+          <Polygon key={s.id} positions={s.outline} pathOptions={SITE_STYLE}>
+            <Tooltip>{s.name}</Tooltip>
+          </Polygon>
+        ),
+      )}
+
+      {drawPoints.length > 0 && (
+        <>
+          <Polyline positions={drawPoints} pathOptions={{ color: "#d64545", weight: 2, dashArray: "4" }} />
+          {drawPoints.map((p, i) => (
+            <CircleMarker
+              key={i}
+              center={p}
+              radius={4}
+              pathOptions={{ color: "#d64545", fillColor: "#fff", fillOpacity: 1 }}
+            />
+          ))}
+        </>
+      )}
 
       {vehicles.map((v) => {
         const selected = v.vehicleId === selectedId;

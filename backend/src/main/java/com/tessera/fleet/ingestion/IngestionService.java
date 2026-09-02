@@ -8,14 +8,18 @@ import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
+import com.tessera.fleet.durable.PositionRecord;
+import com.tessera.fleet.durable.WriteBehindService;
+import com.tessera.fleet.geofence.GeofenceService;
 import com.tessera.fleet.live.LiveFleetService;
 import com.tessera.fleet.model.PositionReport;
 
 /**
- * Pulls the active {@link PositionSource} on a fixed cadence and writes every
- * report into the live layer. This loop is the only writer of position data in
- * Phase 1 and is deliberately trivial: a bad report or a feed outage is logged
- * and skipped, never propagated (SRS §2.5 — the live path must keep running).
+ * Pulls the active {@link PositionSource} on a fixed cadence and, for every
+ * report: updates the live layer, evaluates geofences, and enqueues the fix for
+ * write-behind persistence. Deliberately resilient — a bad report, a feed
+ * outage, or a slow/unreachable database is logged and skipped, never propagated
+ * (SRS §2.5 — the live path must keep running).
  */
 @Service
 public class IngestionService {
@@ -24,15 +28,20 @@ public class IngestionService {
 
     private final PositionSource source;
     private final LiveFleetService liveFleet;
+    private final GeofenceService geofenceService;
+    private final WriteBehindService writeBehind;
 
     private final AtomicLong appliedTotal = new AtomicLong();
     private final AtomicLong rejectedTotal = new AtomicLong();
     private volatile long lastBatchEpochMs = 0L;
     private volatile int lastBatchSize = 0;
 
-    public IngestionService(PositionSource source, LiveFleetService liveFleet) {
+    public IngestionService(PositionSource source, LiveFleetService liveFleet,
+                            GeofenceService geofenceService, WriteBehindService writeBehind) {
         this.source = source;
         this.liveFleet = liveFleet;
+        this.geofenceService = geofenceService;
+        this.writeBehind = writeBehind;
     }
 
     @Scheduled(fixedDelayString = "${tessera.ingest-poll-millis}")
@@ -48,6 +57,11 @@ public class IngestionService {
         for (PositionReport report : batch) {
             try {
                 liveFleet.applyReport(report);
+                geofenceService.onPosition(report.vehicleId(),
+                        report.latitude(), report.longitude(), report.epochMillis());
+                writeBehind.offerPosition(new PositionRecord(report.vehicleId(),
+                        report.latitude(), report.longitude(),
+                        report.speedKph(), report.headingDeg(), report.epochMillis()));
                 applied++;
             } catch (Exception e) {
                 rejectedTotal.incrementAndGet();
