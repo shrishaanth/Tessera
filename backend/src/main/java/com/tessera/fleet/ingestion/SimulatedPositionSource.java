@@ -151,7 +151,7 @@ public class SimulatedPositionSource implements PositionSource {
         v.pendingDestNode = -1;
         // Plan from the node the vehicle is currently committed to reaching, so
         // it finishes the edge it is on and then picks up the route.
-        int[] path = shortestPath(v.toNode, dest);
+        int[] path = routeToward(v.toNode, dest);
         if (path != null) {
             v.routeNodes = path;
             v.routeCursor = 0;
@@ -300,11 +300,16 @@ public class SimulatedPositionSource implements PositionSource {
         return best;
     }
 
-    /** Shortest forward path (inclusive node-id sequence) from src to dst, or null. */
-    private int[] shortestPath(int src, int dst) {
-        if (src == dst) {
-            return new int[] {src};
-        }
+    /**
+     * A forward path (inclusive node-id sequence) from {@code src} toward
+     * {@code dst}. If {@code dst} is reachable, the shortest path to it; if it is
+     * not (its nearest-node snap landed in a disconnected pocket, or across a
+     * one-way boundary), the shortest path to the reachable node physically
+     * closest to it — so a job whose destination snaps somewhere awkward still
+     * resolves instead of leaving the vehicle roaming forever. {@code null} only
+     * when {@code src} has no outgoing route at all.
+     */
+    private int[] routeToward(int src, int dst) {
         int n = graph.nodeCount();
         double[] dist = new double[n];
         int[] prev = new int[n];
@@ -323,9 +328,6 @@ public class SimulatedPositionSource implements PositionSource {
             if (d > dist[u]) {
                 continue;
             }
-            if (u == dst) {
-                break;
-            }
             for (int e = graph.fwdRangeStart(u); e < graph.fwdRangeEnd(u); e++) {
                 int w = graph.fwdTarget(e);
                 double nd = d + Math.max(0.1, graph.fwdTravelSec(e));
@@ -336,11 +338,32 @@ public class SimulatedPositionSource implements PositionSource {
                 }
             }
         }
+
+        int target = dst;
         if (!Double.isFinite(dist[dst])) {
-            return null;
+            target = -1;
+            double best = Double.MAX_VALUE;
+            double dlat = graph.lat(dst);
+            double dlon = graph.lon(dst);
+            for (int i = 0; i < n; i++) {
+                if (!Double.isFinite(dist[i])) {
+                    continue;
+                }
+                double m = GeoMath.haversineMeters(dlat, dlon, graph.lat(i), graph.lon(i));
+                if (m < best) {
+                    best = m;
+                    target = i;
+                }
+            }
+            if (target < 0) {
+                return null;
+            }
+        }
+        if (target == src) {
+            return new int[] {src};
         }
         ArrayDeque<Integer> stack = new ArrayDeque<>();
-        for (int at = dst; at != -1; at = prev[at]) {
+        for (int at = target; at != -1; at = prev[at]) {
             stack.push(at);
         }
         int[] path = new int[stack.size()];
