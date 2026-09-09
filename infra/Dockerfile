@@ -1,4 +1,8 @@
-# syntax=docker/dockerfile:1
+# No `# syntax=` frontend directive on purpose: this Dockerfile uses only plain
+# multi-stage syntax, and pinning the frontend makes every build fetch
+# docker/dockerfile:1 from Docker Hub — which fails on machines whose Docker
+# daemon has a registry-mirror/proxy quirk ("server gave HTTP response to HTTPS
+# client"). The built-in frontend handles everything here.
 
 # --- Stage 1: build the React dashboards -------------------------------------
 FROM node:22-alpine AS frontend

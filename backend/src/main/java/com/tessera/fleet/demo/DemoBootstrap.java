@@ -67,7 +67,11 @@ public class DemoBootstrap implements ApplicationRunner {
     }
 
     private void seedSites() {
-        if (!siteService.list().isEmpty()) {
+        // Check the durable store, not the live engine: this runs on a daemon
+        // thread that can beat GeofenceService's startup reload, so the engine
+        // may still look empty even when sites are persisted — which is how the
+        // demo used to re-seed (and accumulate) 3 sites on every restart.
+        if (!durableStore.loadSites().isEmpty()) {
             return;
         }
         siteService.create(new SiteDefinition("Downtown Crossing Depot",
@@ -136,6 +140,16 @@ public class DemoBootstrap implements ApplicationRunner {
     private void seed() {
         try {
             seedSites();
+
+            // Idempotent across restarts: the synthetic back-fill and the live
+            // demo jobs are only seeded into an empty durable store. Otherwise
+            // every restart re-ran the back-fill (growing geofence_events) and
+            // assigned another dozen live jobs on top of the rehydrated ones.
+            if (!durableStore.loadJobs().isEmpty()) {
+                log.info("Demo bootstrap: durable job history already present — "
+                        + "skipping synthetic back-fill and live-job seeding");
+                return;
+            }
             backfillHistory();
 
             List<Vehicle> vehicles = new ArrayList<>();
