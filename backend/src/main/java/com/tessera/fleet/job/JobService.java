@@ -8,6 +8,8 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.context.ApplicationEventPublisherAware;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 
@@ -32,7 +34,7 @@ import com.tessera.fleet.routing.TravelTimeService;
  * completed when the vehicle's geofence ENTER at that site fires.
  */
 @Service
-public class JobService {
+public class JobService implements ApplicationEventPublisherAware {
 
     private static final Logger log = LoggerFactory.getLogger(JobService.class);
 
@@ -42,6 +44,7 @@ public class JobService {
     private final DurableStore durableStore;
     private final SiteService siteService;
     private final TravelTimeService travelTime;
+    private ApplicationEventPublisher events;
 
     public JobService(LiveFleetService liveFleet, DurableStore durableStore,
                       SiteService siteService, TravelTimeService travelTime) {
@@ -49,6 +52,11 @@ public class JobService {
         this.durableStore = durableStore;
         this.siteService = siteService;
         this.travelTime = travelTime;
+    }
+
+    @Override
+    public void setApplicationEventPublisher(ApplicationEventPublisher publisher) {
+        this.events = publisher;
     }
 
     @EventListener(ApplicationReadyEvent.class)
@@ -113,6 +121,10 @@ public class JobService {
         jobs.put(jobId, assigned);
         liveFleet.setCurrentJob(vehicleId, jobId);
         persist(assigned);
+        if (events != null) {
+            events.publishEvent(new JobAssignedEvent(jobId, vehicleId,
+                    job.destLatitude(), job.destLongitude()));
+        }
         return assigned;
     }
 
@@ -132,6 +144,29 @@ public class JobService {
                 persist(completed);
                 log.debug("Job {} completed on arrival at {} ({})",
                         job.id(), siteId, completed.arrivedOnTime(0) ? "on time" : "late");
+                return Optional.of(completed);
+            }
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * A vehicle has reached the physical destination of its assigned job (the
+     * simulator's road-network arrival). Used when the destination is not inside
+     * a customer site, so no geofence ENTER fires. Completes the job (FR-4.1);
+     * a no-op if the job was already completed via a geofence ENTER.
+     */
+    public Optional<Job> recordArrivalAtDestination(String vehicleId, long arrivalEpochMs) {
+        for (Job job : jobs.values()) {
+            if (job.status() == JobStatus.ASSIGNED
+                    && vehicleId.equals(job.assignedVehicleId())
+                    && job.actualArrivalEpochMs() == 0) {
+                Job completed = job.completedOnArrival(arrivalEpochMs);
+                jobs.put(job.id(), completed);
+                liveFleet.clearCurrentJob(vehicleId);
+                persist(completed);
+                log.debug("Job {} completed on road-network arrival ({})",
+                        job.id(), completed.arrivedOnTime(0) ? "on time" : "late");
                 return Optional.of(completed);
             }
         }

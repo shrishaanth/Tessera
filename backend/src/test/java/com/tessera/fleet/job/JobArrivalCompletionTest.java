@@ -103,6 +103,37 @@ class JobArrivalCompletionTest {
     }
 
     @Test
+    void roadNetworkArrivalCompletesAJobWhoseDestinationIsNotInASite() {
+        // A raw map-pick destination outside every site: no geofence ENTER ever
+        // fires, so the simulator's road-network arrival is what closes the job.
+        when(siteService.siteContaining(anyDouble(), anyDouble())).thenReturn(Optional.empty());
+        Job job = jobService.create(null, "Field call", 42.3600, -71.0700);
+        Job assigned = jobService.assign(job.id(), "CAR-2");
+        assertThat(assigned.siteId()).isNull();
+
+        long arrival = assigned.expectedArrivalEpochMs() - 10_000;
+        Optional<Job> completed = jobService.recordArrivalAtDestination("CAR-2", arrival);
+
+        assertThat(completed).isPresent();
+        assertThat(completed.get().status()).isEqualTo(JobStatus.COMPLETED);
+        assertThat(completed.get().actualArrivalEpochMs()).isEqualTo(arrival);
+        verify(liveFleet).clearCurrentJob("CAR-2");
+
+        // Idempotent: a later geofence ENTER for the same job does nothing.
+        assertThat(jobService.recordArrival("CAR-2", "S1", arrival + 5_000)).isEmpty();
+    }
+
+    @Test
+    void roadNetworkArrivalForAnUnknownVehicleIsANoOp() {
+        Job job = jobService.create(null, "Acme Corp", 42.3560, -71.0635);
+        jobService.assign(job.id(), "CAR-2");
+
+        assertThat(jobService.recordArrivalAtDestination("CAR-999", System.currentTimeMillis()))
+                .isEmpty();
+        assertThat(jobService.get(job.id()).orElseThrow().status()).isEqualTo(JobStatus.ASSIGNED);
+    }
+
+    @Test
     void lateArrivalIsNotScoredOnTime() {
         Job job = jobService.create(null, "Acme Corp", 42.3560, -71.0635);
         Job assigned = jobService.assign(job.id(), "CAR-2");
