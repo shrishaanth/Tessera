@@ -48,7 +48,7 @@ services:
       TESSERA_POSITION_SOURCE: SIMULATOR
       TESSERA_SIM_VEHICLES: "40"
     ports:
-      - "8080:8080"
+      - "8090:8080"
 
 volumes:
   tessera-db:

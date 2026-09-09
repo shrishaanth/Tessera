@@ -90,7 +90,7 @@ Terminal 1 — Redis (uses the binary bundled in the test dependency; run
 `mvn -q -f backend/pom.xml test-compile` once first to download it):
 
 ```bash
-pwsh ./infra/scripts/run-local-redis.ps1
+powershell -ExecutionPolicy Bypass -File infra/scripts/run-local-redis.ps1
 ```
 
 Terminal 2 — backend:

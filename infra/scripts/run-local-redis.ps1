@@ -2,7 +2,8 @@
 # redis-server binary bundled in the embedded-redis test dependency. Useful when
 # Docker Desktop is unavailable. Ctrl+C to stop.
 #
-#   ./infra/scripts/run-local-redis.ps1 [-Port 6379]
+# Works in Windows PowerShell 5.1 (the built-in `powershell`) or PowerShell 7:
+#   powershell -ExecutionPolicy Bypass -File infra/scripts/run-local-redis.ps1 [-Port 6379]
 
 param([int]$Port = 6379)
 
@@ -30,5 +31,16 @@ try {
     $zip.Dispose()
 }
 
+# Write the settings to a conf file — passing `--save ""` on the command line is
+# unreliable because PowerShell drops the empty-string argument.
+$conf = Join-Path $dest "redis.conf"
+# With saving disabled Redis never writes to disk, so no working dir is needed.
+@(
+    "port $Port"
+    'save ""'
+    "appendonly no"
+    "protected-mode no"
+) | Set-Content -Encoding ascii -Path $conf
+
 Write-Host "Starting redis-server on port $Port (Ctrl+C to stop)..."
-& $exe --port $Port --save "" --appendonly no
+& $exe $conf
