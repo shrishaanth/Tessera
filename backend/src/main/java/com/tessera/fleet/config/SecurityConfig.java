@@ -44,7 +44,13 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/login", "/api/auth/logout").permitAll()
                         .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
-                        .anyRequest().authenticated())
+                        // Everything data-bearing lives under /api/** or the /ws/**
+                        // WebSocket; those require an authenticated session (NFR-7).
+                        .requestMatchers("/api/**", "/ws/**").authenticated()
+                        // Anything else is the built React SPA shell (index.html,
+                        // /assets/*, client-side routes forwarded to index.html) —
+                        // public so the login screen can load.
+                        .anyRequest().permitAll())
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
                 .exceptionHandling(e -> e.authenticationEntryPoint(
                         (request, response, ex) -> response.sendError(
