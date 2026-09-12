@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.tessera.risk</groupId>
+        <artifactId>tessera-risk</artifactId>
+        <version>1.0.0</version>
+    </parent>
+
+    <artifactId>reporting-api</artifactId>
+    <name>Tessera Risk :: Reporting API</name>
+    <description>REST and WebSocket access to the HBase risk store</description>
+
+    <dependencyManagement>
+        <dependencies>
+            <!-- Imported rather than inherited: this project already has a parent,
+                 and Spring Boot's starters need their versions managed as a set. -->
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-dependencies</artifactId>
+                <version>${spring.boot.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <dependencies>
+        <!-- Shares the HBase table, family and qualifier names, and the row-key
+             format, with the streaming job that writes these rows. No Spark: this
+             service reads the store, it does not compute anything. -->
+        <dependency>
+            <groupId>com.tessera.risk</groupId>
+            <artifactId>common</artifactId>
+            <version>${project.version}</version>
+            <exclusions>
+                <!-- common carries spark-sql at provided scope for one class this
+                     service never touches. Excluded so nothing can accidentally
+                     resolve it into a Spring Boot application. -->
+                <exclusion>
+                    <groupId>org.apache.spark</groupId>
+                    <artifactId>spark-sql_${scala.binary.version}</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-websocket</artifactId>
+        </dependency>
+
+        <!-- A plain consumer, not spring-kafka. The alert feed is one topic read by
+             one thread into a bounded buffer; the starter's container, offset and
+             rebalance machinery would be more to configure than to write. -->
+        <dependency>
+            <groupId>org.apache.kafka</groupId>
+            <artifactId>kafka-clients</artifactId>
+        </dependency>
+
+        <!-- hbase-shaded-client, not hbase-client: the shaded artifact relocates its
+             Guava, Protobuf and Netty, which otherwise collide with the versions
+             Spring Boot puts on the same classpath. -->
+        <dependency>
+            <groupId>org.apache.hbase</groupId>
+            <artifactId>hbase-shaded-client</artifactId>
+            <version>${hbase.version}</version>
+            <exclusions>
+                <!-- Spring Boot supplies the logging bridge; a second binding makes
+                     log routing non-deterministic. -->
+                <exclusion>
+                    <groupId>org.slf4j</groupId>
+                    <artifactId>slf4j-log4j12</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>log4j</groupId>
+                    <artifactId>log4j</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>commons-logging</groupId>
+                    <artifactId>commons-logging</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <version>${spring.boot.version}</version>
+                <executions>
+                    <execution>
+                        <goals><goal>repackage</goal></goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

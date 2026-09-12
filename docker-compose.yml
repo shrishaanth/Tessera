@@ -252,6 +252,51 @@ services:
       - "com.tessera.risk.ml.TrainingMain"
       - "/opt/tessera/ml-training-1.0.0.jar"
 
+  # REST and WebSocket access to the risk store. Part of the pipeline profile, not
+  # a one-shot job: it stays up serving the dashboard.
+  #
+  #   docker compose --profile pipeline up -d reporting-api
+  #   curl localhost:8090/api/fleet
+  reporting-api:
+    image: eclipse-temurin:17-jre
+    profiles: ["pipeline"]
+    depends_on:
+      kafka:
+        condition: service_healthy
+      hbase:
+        condition: service_healthy
+    ports:
+      - "8090:8090"
+    environment:
+      # Container-to-container: the INTERNAL Kafka listener and the HBase service
+      # name, which is also the hostname HBase advertises to clients.
+      TESSERA_HBASE_ZK: "hbase"
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+    volumes:
+      - ./reporting-api/target:/opt/tessera:ro
+    # The add-opens is HBase's, not Spring's. Its Bytes utility reaches
+    # java.nio.Bits.unaligned() by reflection to pick an unaligned-access fast path,
+    # and without the module open it logs an InaccessibleObjectException and falls
+    # back to a slower comparison. It starts either way — this is a performance and
+    # log-noise fix rather than a correctness one.
+    command:
+      - "java"
+      - "--add-opens=java.base/java.nio=ALL-UNNAMED"
+      - "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED"
+      - "-jar"
+      - "/opt/tessera/reporting-api-1.0.0.jar"
+    healthcheck:
+      # A real HTTP request over bash's /dev/tcp, since the JRE image carries no
+      # curl. /api/alerts/status answers without touching HBase, so this reports on
+      # the service itself rather than on its dependencies: a reporting API that is
+      # up while HBase is down should look up and say so through its own endpoints,
+      # not report itself dead.
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8090; printf \"GET /api/alerts/status HTTP/1.0\\r\\n\\r\\n\" >&3; head -n 1 <&3 | grep -q 200'"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
 volumes:
   kafka-data:
   hbase-data:

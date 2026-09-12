@@ -76,7 +76,7 @@ support only arrived in Spark 4.0.
 | `streaming-job` | ✅ | Windowed aggregation, HBase writes, alerting |
 | `batch-job` | ✅ | RDD feature engineering over the Parquet archive |
 | `ml-training` | ✅ | MLlib classifier training, evaluation and persistence |
-| `reporting-api` | planned | HBase reads for the dashboard |
+| `reporting-api` | ✅ | REST and WebSocket access to the HBase risk store |
 | `frontend` | carried over | Leaflet dashboard, to be re-themed for risk |
 
 ## Running it
@@ -223,7 +223,7 @@ produce plausible-looking wrong data rather than an exception:
   order partitioning produces.
 
 > Spark's tests need a Java 17 runtime — see **Java version** above. With the
-> toolchain configured, `mvn test` runs all 100 on any JDK.
+> toolchain configured, `mvn test` runs all 120 on any JDK.
 
 To inspect the event distribution directly:
 
@@ -320,6 +320,77 @@ The label is built by joining the window aggregate against a copy of itself keye
 one window earlier. The inner join then pairs window *w*'s features with *w+1*'s
 incidents, and windows with no successor drop out on their own, which is right
 since they cannot be labelled.
+
+## The reporting API
+
+```bash
+docker compose --profile pipeline up -d reporting-api
+curl localhost:8090/api/fleet
+```
+
+| Endpoint | Serves |
+|---|---|
+| `GET /api/fleet` | every vehicle's latest window — the map and list view |
+| `GET /api/vehicles/{id}` | one vehicle's latest window |
+| `GET /api/vehicles/{id}/history?windows=n` | a risk time series, newest first |
+| `GET /api/segments/{id}/history?windows=n` | one road segment's recent windows |
+| `GET /api/alerts?limit=n` | recent alerts, for a client that just loaded |
+| `GET /api/alerts/status` | whether the feed is actually working |
+| `GET /api/meta/data-source` | the simulated-data disclosure (FR-6.1) |
+| `WS /ws/alerts` | live alert push (FR-4.2) |
+
+It **computes nothing**. Every number was produced by the streaming job and written
+to HBase, so the read path is a lookup: the dashboard's latency does not depend on
+Spark being healthy, and a query cannot accidentally disagree with what the pipeline
+decided.
+
+### Where the row-key design pays off
+
+Every question the dashboard asks is "what has this entity done most recently", and
+the reversed timestamp makes that a scan with a limit rather than a walk through
+history. `GET /api/vehicles/VEH-010/history?windows=5` returns, in key order and
+with nothing sorted:
+
+```
+window 18:29:00  n= 10  hb= 7  score=100.0  SEVERE
+window 18:28:00  n= 70  hb=20  score=100.0  SEVERE
+window 18:27:00  n=130  hb=34  score=100.0  SEVERE
+window 18:26:00  n=142  hb=34  score=100.0  SEVERE
+```
+
+The `n` column ramping is the sliding window filling. With an ascending timestamp
+the same query would have to read the vehicle's entire history to reach the end of
+it, and the cost of the dashboard's main view would grow with the age of the
+deployment.
+
+### Two deliberate limits
+
+- **No "riskiest segments right now" endpoint.** Answering it means the latest
+  window for each of several thousand segments, and HBase has no aggregation and no
+  secondary index — so it would be a full-table scan on the dashboard's critical
+  path. Serving it properly needs either a materialised current-state table
+  maintained by the streaming job, or an analytical query over Parquet. Per-segment
+  lookup is what a key-value store is good at, so that is what is exposed.
+- **The fleet snapshot is O(fleet size).** The roster scan plus one bounded scan per
+  vehicle — a few dozen cheap lookups, independent of how much history exists. It
+  would not suit thousands of vehicles as written; that would want the streaming job
+  to maintain a single current-state row.
+
+### Absent is not zero
+
+The model's columns do not exist until training has run, and HBase is a sparse
+store where "unwritten" and "absent" are the same thing. So `probability` and
+`predictedLabel` are served as `null`, never as `0`, and `modelScored` says which
+you are looking at:
+
+```json
+{ "riskScore": 30.0, "riskLevel": "MODERATE",
+  "predictedLabel": null, "probability": null, "modelScored": false }
+```
+
+A probability of `0.0` means the model is confident nothing will happen. Absence
+means no model has run. A dashboard showing the second as the first would be
+inventing a prediction.
 
 ## Results
 

@@ -47,6 +47,14 @@ public final class FeatureSchema {
     public static final String MAX_SEVERITY = "maxSeverity";
     public static final String MOVING_RATIO = "movingRatio";
 
+    // Carried through the aggregation for the dashboard's map, not used as features:
+    // where a vehicle happens to be says nothing about how it is being driven, and
+    // a model given raw coordinates would learn the shape of this particular city.
+    public static final String LAT = "lat";
+    public static final String LON = "lon";
+    public static final String HEADING_DEG = "headingDeg";
+    public static final String LAST_READING_TS = "lastReadingTs";
+
     // Derived features.
     public static final String HARD_BRAKE_RATE = "hardBrakeRate";
     public static final String SPEED_VIOLATION_RATE = "speedViolationRate";

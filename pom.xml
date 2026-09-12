@@ -14,7 +14,7 @@
 
     <!-- Modules are added as each milestone lands, so the build stays green
          throughout rather than referencing directories that do not exist yet.
-         Planned: reporting-api. -->
+         Only the frontend re-theme remains. -->
     <modules>
         <module>common</module>
         <module>simulation</module>
@@ -23,6 +23,7 @@
         <module>streaming-job</module>
         <module>batch-job</module>
         <module>ml-training</module>
+        <module>reporting-api</module>
     </modules>
 
     <properties>
@@ -187,6 +188,15 @@
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-compiler-plugin</artifactId>
                     <version>3.13.0</version>
+                    <configuration>
+                        <!-- Keep parameter names in the bytecode. Spring resolves
+                             @PathVariable and @RequestParam names by reflection, and
+                             without this every one would have to be spelled out a
+                             second time as an annotation value. spring-boot-starter-parent
+                             sets this for the same reason; this build has its own
+                             parent, so it sets it here. -->
+                        <parameters>true</parameters>
+                    </configuration>
                 </plugin>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>

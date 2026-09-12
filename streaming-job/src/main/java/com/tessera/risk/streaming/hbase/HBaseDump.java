@@ -18,6 +18,7 @@ import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.client.Table;
 import org.apache.hadoop.hbase.util.Bytes;
 
+import com.tessera.risk.common.hbase.RowKeys;
 import com.tessera.risk.streaming.StreamingConfig;
 
 /**

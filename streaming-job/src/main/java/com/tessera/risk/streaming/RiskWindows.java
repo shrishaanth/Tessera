@@ -17,6 +17,7 @@ import static org.apache.spark.sql.functions.expr;
 import static org.apache.spark.sql.functions.from_json;
 import static org.apache.spark.sql.functions.lit;
 import static org.apache.spark.sql.functions.max;
+import static org.apache.spark.sql.functions.max_by;
 import static org.apache.spark.sql.functions.sum;
 import static org.apache.spark.sql.functions.when;
 import static org.apache.spark.sql.functions.window;
@@ -64,6 +65,10 @@ public final class RiskWindows {
     public static final String MAX_SEVERITY = FeatureSchema.MAX_SEVERITY;
     public static final String MOVING_RATIO = FeatureSchema.MOVING_RATIO;
     public static final String RISK_SCORE = "riskScore";
+    public static final String LAT = FeatureSchema.LAT;
+    public static final String LON = FeatureSchema.LON;
+    public static final String HEADING_DEG = FeatureSchema.HEADING_DEG;
+    public static final String LAST_READING_TS = FeatureSchema.LAST_READING_TS;
 
     private static final String COMPLIANT_COUNT = "compliantCount";
     private static final String LIMITED_COUNT = "limitedCount";
@@ -179,7 +184,21 @@ public final class RiskWindows {
                         // feature vector, and the batch job computes it too. A
                         // feature the streaming job failed to produce would reach
                         // the model as null rather than as an error.
-                        avg(isMoving()).as(MOVING_RATIO))
+                        avg(isMoving()).as(MOVING_RATIO),
+                        // The vehicle's last known position in the window, so the
+                        // dashboard can place it on a map.
+                        //
+                        // max_by, not avg: averaging five minutes of coordinates
+                        // would put the marker somewhere the vehicle never was, quite
+                        // possibly off the road. And not first() or last() either —
+                        // in a streaming aggregation those mean "whichever row Spark
+                        // happened to see first", which is stable here only by
+                        // accident. max_by ties the position to the greatest event
+                        // timestamp, which is what "last known" actually means.
+                        max_by(col("lat"), col("ts")).as(LAT),
+                        max_by(col("lon"), col("ts")).as(LON),
+                        max_by(col("headingDeg"), col("ts")).as(HEADING_DEG),
+                        max("ts").as(LAST_READING_TS))
                 .withColumn(RISK_SCORE, RiskScoring.vehicleRiskScoreColumn())
                 .withColumn(WINDOW_START, expr("unix_millis(window.start)"))
                 .withColumn(WINDOW_END, expr("unix_millis(window.end)"))

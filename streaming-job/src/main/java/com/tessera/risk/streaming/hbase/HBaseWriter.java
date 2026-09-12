@@ -16,6 +16,8 @@ import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.types.StructType;
 
+import com.tessera.risk.common.hbase.RiskTables;
+import com.tessera.risk.common.hbase.RowKeys;
 import com.tessera.risk.common.model.DriverDirectory;
 import com.tessera.risk.common.spark.FeatureSchema;
 import com.tessera.risk.streaming.RiskWindows;
@@ -51,51 +53,34 @@ public final class HBaseWriter implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
-    // Column qualifiers. A qualifier carries the same meaning wherever it appears,
-    // so one that is written to more than one table is declared once: the
-    // hardBrakeCount in cf_risk and the one in cf_behavior count the same thing
-    // about different subjects, and a reader should never have to check whether
-    // two identically named columns agree.
-
-    // Counts, shared by segment_metrics/cf_risk and vehicle_risk/cf_behavior.
-    public static final String Q_HARD_BRAKE_COUNT = "hardBrakeCount";
-    public static final String Q_SPEED_VIOLATION_COUNT = "speedViolationCount";
-    public static final String Q_INCIDENT_COUNT = "incidentCount";
-    public static final String Q_READING_COUNT = "readingCount";
-
-    // Speed, shared by segment_metrics/cf_traffic and vehicle_risk/cf_behavior.
-    public static final String Q_AVG_SPEED = "avgSpeedKph";
-    public static final String Q_MAX_SPEED = "maxSpeedKph";
-    public static final String Q_SPEED_LIMIT = "speedLimitKph";
-    public static final String Q_AVG_OVER_LIMIT = "avgOverLimitRatio";
-
-    /** Window end, stored so a reader knows the span without re-deriving it from the key. */
-    public static final String Q_WINDOW_END = "windowEnd";
-
-    // segment_metrics only.
-    public static final String Q_VEHICLE_COUNT = "vehicleCount";
-    public static final String Q_COMPLIANCE_RATIO = "complianceRatio";
-    public static final String Q_RISK_INDEX = "riskIndex";
-
-    // vehicle_risk only.
-    public static final String Q_MAX_SEVERITY = "maxSeverity";
-    public static final String Q_DRIVER_ID = "driverId";
-    public static final String Q_RISK_TIER = "riskTier";
-
-    // vehicle_risk / cf_score
-    public static final String Q_RISK_SCORE = "riskScore";
-    /**
-     * Written by the model-scoring stage (FR-3.6), not by this writer. Defined here
-     * so the two writers cannot disagree on the qualifier name, and so the column
-     * is visible in the schema before the model exists.
-     */
-    public static final String Q_PREDICTED_LABEL = "predictedLabel";
-    /** Model confidence for {@link #Q_PREDICTED_LABEL}; see above. */
-    public static final String Q_PROBABILITY = "probability";
-
-    // driver_profile / cf_profile
-    public static final String Q_DRIVER_NAME = "driverName";
-    public static final String Q_LAST_SEEN_TS = "lastSeenTs";
+    // Column qualifiers, aliased from the shared contract in RiskTables so the
+    // reporting API reads the columns this writer actually writes. Declared here as
+    // well only to keep the call sites below readable.
+    public static final String Q_HARD_BRAKE_COUNT = RiskTables.HARD_BRAKE_COUNT;
+    public static final String Q_SPEED_VIOLATION_COUNT = RiskTables.SPEED_VIOLATION_COUNT;
+    public static final String Q_INCIDENT_COUNT = RiskTables.INCIDENT_COUNT;
+    public static final String Q_READING_COUNT = RiskTables.READING_COUNT;
+    public static final String Q_AVG_SPEED = RiskTables.AVG_SPEED_KPH;
+    public static final String Q_MAX_SPEED = RiskTables.MAX_SPEED_KPH;
+    public static final String Q_SPEED_LIMIT = RiskTables.SPEED_LIMIT_KPH;
+    public static final String Q_AVG_OVER_LIMIT = RiskTables.AVG_OVER_LIMIT_RATIO;
+    public static final String Q_WINDOW_END = RiskTables.WINDOW_END;
+    public static final String Q_VEHICLE_COUNT = RiskTables.VEHICLE_COUNT;
+    public static final String Q_COMPLIANCE_RATIO = RiskTables.COMPLIANCE_RATIO;
+    public static final String Q_RISK_INDEX = RiskTables.RISK_INDEX;
+    public static final String Q_MAX_SEVERITY = RiskTables.MAX_SEVERITY;
+    public static final String Q_DRIVER_ID = RiskTables.DRIVER_ID;
+    public static final String Q_RISK_TIER = RiskTables.RISK_TIER;
+    public static final String Q_MOVING_RATIO = RiskTables.MOVING_RATIO;
+    public static final String Q_LAT = RiskTables.LAT;
+    public static final String Q_LON = RiskTables.LON;
+    public static final String Q_HEADING = RiskTables.HEADING_DEG;
+    public static final String Q_LAST_READING_TS = RiskTables.LAST_READING_TS;
+    public static final String Q_RISK_SCORE = RiskTables.RISK_SCORE;
+    public static final String Q_PREDICTED_LABEL = RiskTables.PREDICTED_LABEL;
+    public static final String Q_PROBABILITY = RiskTables.PROBABILITY;
+    public static final String Q_DRIVER_NAME = RiskTables.DRIVER_NAME;
+    public static final String Q_LAST_SEEN_TS = RiskTables.LAST_SEEN_TS;
 
     private final String zkQuorum;
     private final String zkPort;
@@ -135,7 +120,13 @@ public final class HBaseWriter implements Serializable {
             putDouble(put, HBaseSchema.CF_BEHAVIOR, Q_MAX_SEVERITY, row, RiskWindows.MAX_SEVERITY);
             putString(put, HBaseSchema.CF_BEHAVIOR, Q_DRIVER_ID, row, RiskWindows.DRIVER_ID);
             putString(put, HBaseSchema.CF_BEHAVIOR, Q_RISK_TIER, row, RiskWindows.RISK_TIER);
+            putDouble(put, HBaseSchema.CF_BEHAVIOR, Q_MOVING_RATIO, row, RiskWindows.MOVING_RATIO);
             putLong(put, HBaseSchema.CF_BEHAVIOR, Q_WINDOW_END, row, RiskWindows.WINDOW_END);
+            putDouble(put, HBaseSchema.CF_BEHAVIOR, Q_LAT, row, RiskWindows.LAT);
+            putDouble(put, HBaseSchema.CF_BEHAVIOR, Q_LON, row, RiskWindows.LON);
+            putDouble(put, HBaseSchema.CF_BEHAVIOR, Q_HEADING, row, RiskWindows.HEADING_DEG);
+            putLong(put, HBaseSchema.CF_BEHAVIOR, Q_LAST_READING_TS, row,
+                    RiskWindows.LAST_READING_TS);
 
             putDouble(put, HBaseSchema.CF_SCORE, Q_RISK_SCORE, row, RiskWindows.RISK_SCORE);
             // Written only once a model has been trained. Before then these columns

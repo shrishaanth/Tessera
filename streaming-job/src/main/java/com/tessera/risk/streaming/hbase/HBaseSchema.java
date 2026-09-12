@@ -14,6 +14,8 @@ import org.apache.hadoop.hbase.client.TableDescriptorBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.tessera.risk.common.hbase.RiskTables;
+
 /**
  * The wide-column data model, and the code that creates it.
  *
@@ -41,22 +43,25 @@ public final class HBaseSchema {
 
     private static final Logger log = LoggerFactory.getLogger(HBaseSchema.class);
 
-    public static final TableName SEGMENT_METRICS = TableName.valueOf("segment_metrics");
-    public static final TableName VEHICLE_RISK = TableName.valueOf("vehicle_risk");
-    public static final TableName DRIVER_PROFILE = TableName.valueOf("driver_profile");
+    // Built from the shared names in RiskTables, not from literals. The reporting
+    // API addresses the same rows and shares those names, so a rename cannot leave
+    // the reader looking in the wrong place.
+    public static final TableName SEGMENT_METRICS = TableName.valueOf(RiskTables.SEGMENT_METRICS);
+    public static final TableName VEHICLE_RISK = TableName.valueOf(RiskTables.VEHICLE_RISK);
+    public static final TableName DRIVER_PROFILE = TableName.valueOf(RiskTables.DRIVER_PROFILE);
 
     /** segment_metrics: how traffic is flowing over a stretch of road. */
-    public static final byte[] CF_TRAFFIC = bytes("cf_traffic");
+    public static final byte[] CF_TRAFFIC = bytes(RiskTables.CF_TRAFFIC);
     /** segment_metrics: unsafe behaviour observed on that stretch. */
-    public static final byte[] CF_RISK = bytes("cf_risk");
+    public static final byte[] CF_RISK = bytes(RiskTables.CF_RISK);
 
     /** vehicle_risk: what the vehicle did. */
-    public static final byte[] CF_BEHAVIOR = bytes("cf_behavior");
+    public static final byte[] CF_BEHAVIOR = bytes(RiskTables.CF_BEHAVIOR);
     /** vehicle_risk: what the rules and the model make of it. */
-    public static final byte[] CF_SCORE = bytes("cf_score");
+    public static final byte[] CF_SCORE = bytes(RiskTables.CF_SCORE);
 
     /** driver_profile: slowly-changing reference data about the driver. */
-    public static final byte[] CF_PROFILE = bytes("cf_profile");
+    public static final byte[] CF_PROFILE = bytes(RiskTables.CF_PROFILE);
 
     /** Windowed metrics are operational, not archival — the Parquet archive is the record. */
     private static final int TIME_SERIES_TTL_SECONDS = (int) TimeUnit.DAYS.toSeconds(7);

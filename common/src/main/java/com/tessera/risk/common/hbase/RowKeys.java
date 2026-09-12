@@ -1,4 +1,4 @@
-package com.tessera.risk.streaming.hbase;
+package com.tessera.risk.common.hbase;
 
 /**
  * Row-key construction for the time-series tables.
