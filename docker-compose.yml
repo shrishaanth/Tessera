@@ -139,9 +139,14 @@ services:
       # earliest, not latest: when the job starts after the producer, the
       # telemetry already on the topic is what makes the first windows non-empty.
       TESSERA_STARTING_OFFSETS: "earliest"
+      # Read-only, and absent until training has run. The job logs a warning and
+      # falls back to the rule-based score rather than refusing to start, so the
+      # stack can be demonstrated in its natural order.
+      TESSERA_MODEL_PATH: "/data/model"
     volumes:
       - ./streaming-job/target:/opt/tessera:ro
       - ./infra/spark:/opt/tessera-conf:ro
+      - ./data:/data:ro
       - spark-checkpoints:/checkpoints
     # spark-submit directly rather than through the image's entrypoint, which
     # expects the argument shape Spark's Kubernetes scheduler passes it.
@@ -220,6 +225,32 @@ services:
       - "--class"
       - "com.tessera.risk.batch.BatchMain"
       - "/opt/tessera/batch-job-1.0.0.jar"
+
+  # Trains, evaluates and persists the classifier. One-shot.
+  #
+  #   docker compose --profile jobs run --rm ml-training
+  ml-training:
+    image: apache/spark:3.5.3-scala2.12-java17-ubuntu
+    profiles: ["jobs"]
+    user: root
+    environment:
+      TESSERA_FEATURES_PATH: "/data/features"
+      TESSERA_MODEL_PATH: "/data/model"
+    volumes:
+      - ./ml-training/target:/opt/tessera:ro
+      - ./infra/spark:/opt/tessera-conf:ro
+      - ./data:/data
+    entrypoint: ["/opt/spark/bin/spark-submit"]
+    command:
+      - "--master"
+      - "local[*,4]"
+      - "--driver-memory"
+      - "2g"
+      - "--driver-java-options"
+      - "-Dlog4j.configurationFile=file:///opt/tessera-conf/log4j2.properties"
+      - "--class"
+      - "com.tessera.risk.ml.TrainingMain"
+      - "/opt/tessera/ml-training-1.0.0.jar"
 
 volumes:
   kafka-data:

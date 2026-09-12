@@ -75,7 +75,7 @@ support only arrived in Spark 4.0.
 | `archive-generator` | ✅ | Offline bulk generation into the Parquet archive |
 | `streaming-job` | ✅ | Windowed aggregation, HBase writes, alerting |
 | `batch-job` | ✅ | RDD feature engineering over the Parquet archive |
-| `ml-training` | planned | MLlib classifier training and evaluation |
+| `ml-training` | ✅ | MLlib classifier training, evaluation and persistence |
 | `reporting-api` | planned | HBase reads for the dashboard |
 | `frontend` | carried over | Leaflet dashboard, to be re-themed for risk |
 
@@ -137,10 +137,14 @@ Three settings exist because of that failure, and are worth leaving alone:
   restart swallows the whole topic — one run turned a 3-hour backlog into 16,000
   window rows in a single batch and paused HBase long enough to kill it. Catch-up
   still runs about eight times faster than the producer emits.
-- The `hbase` health check probes ports rather than running `hbase shell status`.
-  The shell check starts a JVM every 15 seconds and could not finish inside its own
-  timeout while the job was writing, so the service flapped to unhealthy while
-  serving normally.
+- The `hbase` health check starts no JVM. `hbase shell status` does, every 15
+  seconds, and could not finish inside its own timeout while the job was writing —
+  so the service flapped to unhealthy while serving normally. But ports alone are
+  not enough either: after a dirty shutdown the master can bind every port and then
+  wedge forever reconciling `hbase:meta` against the region server that died, and a
+  port probe calls that healthy while dependents start against it and hang. The
+  check therefore also reads `masterFinishedInitializationTime` from the master's
+  JMX endpoint, which stays 0 until initialisation genuinely completes.
 - The Spark master is `local[2,4]`, not `local[2]`. In local mode Spark **ignores
   `spark.task.maxFailures`** and hardcodes it to 1; only the `local[N,F]` form sets
   a failure budget. Without the `4`, one retryable HBase error — a region being
@@ -219,7 +223,7 @@ produce plausible-looking wrong data rather than an exception:
   order partitioning produces.
 
 > Spark's tests need a Java 17 runtime — see **Java version** above. With the
-> toolchain configured, `mvn test` runs all 83 on any JDK.
+> toolchain configured, `mvn test` runs all 100 on any JDK.
 
 To inspect the event distribution directly:
 
@@ -258,6 +262,12 @@ docker compose --profile jobs run --rm archive-generator
 docker compose --profile jobs run --rm batch-job
 ```
 
+Then train, which persists the pipeline the streaming job picks up:
+
+```bash
+docker compose --profile jobs run --rm ml-training
+```
+
 The generator writes seven simulated days — about 14.5 million readings — as
 Parquet partitioned by date. The fleet is split into slices simulated in parallel,
 which is sound because vehicles in this model never interact: no traffic, no
@@ -290,9 +300,11 @@ Two properties make that a task worth posing:
 
 - **Accuracy becomes useless.** Predicting "no incident" every time scores 89.8%, so
   the next stage has to report precision and recall.
-- **Knowing the driver is not enough.** Positive rates run SAFE 6.4%, AVERAGE 9.2%,
-  RISKY 25.0% — every tier below half, so a tier-only classifier collapses onto the
-  majority baseline. Any lift has to come from behaviour.
+- **No tier is more likely to offend than not.** Positive rates run SAFE 6.4%,
+  AVERAGE 9.2%, RISKY 25.0% — all below half, so the accuracy-maximising answer is
+  always "no incident" and the majority baseline stays the honest thing to quote.
+  (This does *not* make the tier a weak predictor — as a flag it reaches lift 2.6.
+  See **Results** below.)
 
 Both are asserted in `FleetSimulatorTest`, because a change to the thresholds could
 otherwise quietly destroy them.
@@ -308,6 +320,78 @@ The label is built by joining the window aggregate against a copy of itself keye
 one window earlier. The inner join then pairs window *w*'s features with *w+1*'s
 incidents, and windows with no successor drop out on their own, which is right
 since they cannot be labelled.
+
+## Results
+
+```bash
+docker compose --profile jobs run --rm ml-training
+```
+
+Split chronologically at 70% of the time range — 33,816 training rows, 14,544 held
+out. A random split would train on Friday and test on Tuesday, which is not the
+question anyone needs answered and quietly makes it easier. The decision threshold
+is tuned by maximising F1 **on the training split**, then baked into the saved model
+so the streaming job cannot score at a different cutoff than was measured.
+
+| | accuracy | precision | recall | F1 | lift | PR-AUC | ROC-AUC |
+|---|---|---|---|---|---|---|---|
+| baseline: always negative | 0.910 | 0.000 | 0.000 | 0.000 | — | — | — |
+| **baseline: tier is RISKY** | 0.821 | **0.233** | 0.430 | **0.302** | **2.58** | — | — |
+| baseline: hardBrakeRate ≥ 0.08 | 0.754 | 0.162 | 0.412 | 0.232 | 1.79 | — | — |
+| forest, behaviour only | 0.776 | 0.167 | 0.371 | 0.230 | 1.85 | 0.149 | 0.638 |
+| forest, all features | 0.817 | 0.227 | 0.429 | 0.297 | 2.52 | 0.186 | 0.700 |
+| logistic regression | 0.819 | 0.231 | 0.431 | 0.301 | 2.56 | 0.188 | 0.699 |
+
+**The models do not beat the tier heuristic.** They match it — 0.301 F1 against
+0.302 — and the feature importances say why: `riskTierOrdinal` alone accounts for
+0.625 of the forest. The model largely learned "flag the RISKY drivers".
+
+That is reported rather than buried, because the diagnosis is the interesting part:
+
+- **Behaviour does carry independent signal.** With the tier removed, the forest
+  still reaches lift 1.85 and ROC-AUC 0.638 — better than the tuned single-feature
+  rule it is competing with. It is real, just weaker than the tier.
+- **Combining helps the ranking.** ROC-AUC rises from 0.638 to 0.700, and unlike a
+  binary tier rule the model emits a continuous score, which is what a dashboard
+  and an alert threshold actually need.
+- **The window is the limitation.** A speeding episode lasts 45 seconds; the feature
+  window is 300. "Currently speeding" — the state that actually precedes an
+  incident — mostly does not survive into the next window, so it is averaged away.
+  Re-running at 60-second windows lifts ROC-AUC to 0.736 and drops tier importance
+  to 0.482, confirming the diagnosis, but positives fall to 1.9% and precision
+  collapses to 0.055. Neither window is a clean win.
+- **Long-run behaviour *is* the tier here, by construction.** The simulator derives
+  episode probability from the tier and nothing else, so a longer behavioural
+  history converges on information the model already has. The ceiling is a property
+  of the data-generating process, not of the model.
+
+`hourOfDay` carries 0.027 importance, as expected — the generator has no diurnal
+cycle. Seeing that confirmed is a check on the pipeline rather than a
+disappointment.
+
+### Scoring the live stream
+
+The streaming job loads the persisted pipeline and scores every micro-batch,
+writing `predictedLabel` and `probability` into `vehicle_risk`'s `cf_score`
+alongside the rule-based score. Both are kept because they disagree usefully:
+
+```
+VEH-001 window=17:50:00Z  hardBrakeCount=20  readingCount=90
+        cf_score:riskScore=100.000   cf_score:predictedLabel=0  cf_score:probability=0.310
+```
+
+The rule sees 20 hard brakes in 90 readings and saturates; the model, which was
+fitted on full windows, is unmoved. The rule also works from the first window,
+before any model exists — a fresh clone has no trained model and cannot, since
+training needs an archive that must be generated first, so the job logs a warning
+and runs on rules alone.
+
+The features are derived by `FeatureVector`, the same code the batch job used to
+build the training set, and the vector is assembled *inside* the persisted pipeline.
+Together those remove the two ways a served model usually goes quietly wrong:
+features computed by different arithmetic than they were fitted to, or assembled in
+a different order. Neither throws — both just make every prediction meaningless
+while the model keeps returning confident probabilities.
 
 ## What the streaming job computes
 

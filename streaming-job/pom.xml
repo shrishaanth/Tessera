@@ -37,6 +37,12 @@
             <artifactId>spark-sql_${scala.binary.version}</artifactId>
             <scope>provided</scope>
         </dependency>
+        <!-- For loading the persisted PipelineModel and scoring micro-batches. -->
+        <dependency>
+            <groupId>org.apache.spark</groupId>
+            <artifactId>spark-mllib_${scala.binary.version}</artifactId>
+            <scope>provided</scope>
+        </dependency>
 
         <!-- The Kafka source is NOT part of a Spark distribution; it has to be
              supplied by the application, either by the spark-submit packages

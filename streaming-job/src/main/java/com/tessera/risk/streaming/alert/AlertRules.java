@@ -1,9 +1,12 @@
 package com.tessera.risk.streaming.alert;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.OptionalDouble;
 
+import org.apache.spark.sql.Column;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.expressions.WindowSpec;
@@ -12,6 +15,7 @@ import com.tessera.risk.common.model.RiskAlert;
 import com.tessera.risk.common.model.RiskTier;
 import com.tessera.risk.streaming.RiskWindows;
 import com.tessera.risk.streaming.StreamingConfig;
+import com.tessera.risk.streaming.ml.RiskModel;
 
 import static org.apache.spark.sql.functions.col;
 import static org.apache.spark.sql.functions.row_number;
@@ -76,6 +80,15 @@ public final class AlertRules {
                 .orderBy(col(RiskWindows.READING_COUNT).desc(),
                         col(RiskWindows.WINDOW_START).desc());
 
+        // The model column exists only once a model has been trained, so the rule is
+        // added conditionally rather than referencing a column that may not be there.
+        Column thresholdsCrossed = col(RiskWindows.RISK_SCORE).geq(config.alertScoreThreshold())
+                .or(col(RiskWindows.INCIDENT_COUNT).geq(config.alertIncidentFloor()));
+        if (Arrays.asList(vehicleBatch.columns()).contains(RiskModel.POSITIVE_PROBABILITY)) {
+            thresholdsCrossed = thresholdsCrossed.or(
+                    col(RiskModel.POSITIVE_PROBABILITY).geq(config.alertProbabilityThreshold()));
+        }
+
         List<Row> rows = vehicleBatch
                 // Before ranking, not after: filtering afterwards would discard the
                 // vehicle entirely whenever its top-ranked window happened to be
@@ -84,8 +97,7 @@ public final class AlertRules {
                         .or(col(RiskWindows.INCIDENT_COUNT).geq(config.alertIncidentFloor())))
                 .withColumn(RANK, row_number().over(bestEvidenceFirst))
                 .filter(col(RANK).equalTo(1))
-                .filter(col(RiskWindows.RISK_SCORE).geq(config.alertScoreThreshold())
-                        .or(col(RiskWindows.INCIDENT_COUNT).geq(config.alertIncidentFloor())))
+                .filter(thresholdsCrossed)
                 .collectAsList();
 
         List<RiskAlert> alerts = new ArrayList<>(rows.size());
@@ -113,7 +125,8 @@ public final class AlertRules {
                 violations,
                 incidents,
                 readings,
-                reason(config, riskScore, hardBrakes, violations, incidents, readings),
+                reason(config, riskScore, hardBrakes, violations, incidents, readings,
+                        probabilityAt(row)),
                 now);
     }
 
@@ -125,11 +138,23 @@ public final class AlertRules {
      * would make the alert read like every other alert.
      */
     static String reason(StreamingConfig config, double riskScore,
-                         long hardBrakes, long violations, long incidents, long readings) {
+                         long hardBrakes, long violations, long incidents, long readings,
+                         OptionalDouble modelProbability) {
         if (incidents >= config.alertIncidentFloor()) {
             return String.format(Locale.ROOT,
                     "%d incident%s in the last window (risk score %.0f)",
                     incidents, incidents == 1 ? "" : "s", riskScore);
+        }
+        // When it was the model that fired, say so. Quoting a rule score of 20 on an
+        // alert the rules did not raise would read as a contradiction, and an
+        // operator would reasonably stop trusting the message.
+        if (modelProbability.isPresent()
+                && modelProbability.getAsDouble() >= config.alertProbabilityThreshold()) {
+            return String.format(Locale.ROOT,
+                    "Model predicts an incident with %.0f%% confidence "
+                            + "(%d hard brake%s in %d readings)",
+                    100.0 * modelProbability.getAsDouble(),
+                    hardBrakes, hardBrakes == 1 ? "" : "s", readings);
         }
         // The reading count is part of the sentence, not an afterthought: the score
         // is a rate, so "12 hard brakes" means something very different over one
@@ -149,6 +174,17 @@ public final class AlertRules {
             // alert about a vehicle that may be about to crash.
             return RiskTier.AVERAGE;
         }
+    }
+
+    /** The model's confidence, or empty when no model contributed to this batch. */
+    private static OptionalDouble probabilityAt(Row row) {
+        if (!Arrays.asList(row.schema().fieldNames()).contains(RiskModel.POSITIVE_PROBABILITY)) {
+            return OptionalDouble.empty();
+        }
+        int index = row.fieldIndex(RiskModel.POSITIVE_PROBABILITY);
+        return row.isNullAt(index)
+                ? OptionalDouble.empty()
+                : OptionalDouble.of(row.getDouble(index));
     }
 
     private static double doubleAt(Row row, String column) {

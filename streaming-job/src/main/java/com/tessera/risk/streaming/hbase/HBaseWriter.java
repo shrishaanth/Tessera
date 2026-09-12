@@ -3,6 +3,7 @@ package com.tessera.risk.streaming.hbase;
 import java.io.IOException;
 import java.io.Serializable;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.Iterator;
 
 import org.apache.hadoop.hbase.TableName;
@@ -13,9 +14,12 @@ import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.spark.api.java.function.ForeachPartitionFunction;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
+import org.apache.spark.sql.types.StructType;
 
 import com.tessera.risk.common.model.DriverDirectory;
+import com.tessera.risk.common.spark.FeatureSchema;
 import com.tessera.risk.streaming.RiskWindows;
+import com.tessera.risk.streaming.ml.RiskModel;
 
 /**
  * Writes aggregated windows into HBase from inside a micro-batch.
@@ -134,6 +138,11 @@ public final class HBaseWriter implements Serializable {
             putLong(put, HBaseSchema.CF_BEHAVIOR, Q_WINDOW_END, row, RiskWindows.WINDOW_END);
 
             putDouble(put, HBaseSchema.CF_SCORE, Q_RISK_SCORE, row, RiskWindows.RISK_SCORE);
+            // Written only once a model has been trained. Before then these columns
+            // are simply absent from the row, and the rule-based score stands alone.
+            putLong(put, HBaseSchema.CF_SCORE, Q_PREDICTED_LABEL, row, FeatureSchema.PREDICTION);
+            putDouble(put, HBaseSchema.CF_SCORE, Q_PROBABILITY, row,
+                    RiskModel.POSITIVE_PROBABILITY);
         }, RiskWindows.VEHICLE_ID);
     }
 
@@ -249,7 +258,18 @@ public final class HBaseWriter implements Serializable {
         }
     }
 
+    /**
+     * A column's value, or null when the column is not in the row at all.
+     *
+     * <p>Absence is a normal state here: the prediction columns exist only after a
+     * model has been trained. {@code fieldIndex} throws for an unknown name, so the
+     * schema is consulted first rather than catching the exception.
+     */
     private static Object valueOf(Row row, String column) {
+        StructType schema = row.schema();
+        if (schema == null || !Arrays.asList(schema.fieldNames()).contains(column)) {
+            return null;
+        }
         int index = row.fieldIndex(column);
         return row.isNullAt(index) ? null : row.get(index);
     }

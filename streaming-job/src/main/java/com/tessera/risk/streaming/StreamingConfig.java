@@ -24,6 +24,8 @@ import java.io.Serializable;
  * @param triggerSeconds       micro-batch interval
  * @param alertScoreThreshold  risk score at or above which an alert is raised
  * @param alertIncidentFloor   incident count that raises an alert regardless of score
+ * @param modelPath            persisted classifier; absent means score by rules only
+ * @param alertProbabilityThreshold model confidence at or above which an alert is raised
  * @param alertMinReadings     readings a window needs before its score may alert
  * @param alertCooldownSeconds minimum gap between two alerts for the same vehicle
  */
@@ -41,7 +43,9 @@ public record StreamingConfig(
         int slideMinutes,
         int watermarkSeconds,
         int triggerSeconds,
+        String modelPath,
         double alertScoreThreshold,
+        double alertProbabilityThreshold,
         long alertIncidentFloor,
         long alertMinReadings,
         int alertCooldownSeconds) implements Serializable {
@@ -74,7 +78,15 @@ public record StreamingConfig(
                 envInt("TESSERA_SLIDE_MINUTES", 1),
                 envInt("TESSERA_WATERMARK_SECONDS", 120),
                 envInt("TESSERA_TRIGGER_SECONDS", 10),
+                envString("TESSERA_MODEL_PATH", "/data/model"),
                 envDouble("TESSERA_ALERT_SCORE_THRESHOLD", 65.0),
+                // Deliberately well above the model's own decision threshold. The
+                // model flags about one window in six to reach its measured recall,
+                // which is the right trade for a dashboard colour but far too noisy
+                // for a notification. An alert should fire only where the model is
+                // unusually sure, not merely past the point where positive beats
+                // negative.
+                envDouble("TESSERA_ALERT_PROBABILITY_THRESHOLD", 0.80),
                 envLong("TESSERA_ALERT_INCIDENT_FLOOR", 1L),
                 // One minute of telemetry at the default tick rate. The newest
                 // window is also the emptiest one, and a rate computed over a

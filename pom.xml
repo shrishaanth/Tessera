@@ -14,7 +14,7 @@
 
     <!-- Modules are added as each milestone lands, so the build stays green
          throughout rather than referencing directories that do not exist yet.
-         Planned: ml-training, reporting-api. -->
+         Planned: reporting-api. -->
     <modules>
         <module>common</module>
         <module>simulation</module>
@@ -22,6 +22,7 @@
         <module>archive-generator</module>
         <module>streaming-job</module>
         <module>batch-job</module>
+        <module>ml-training</module>
     </modules>
 
     <properties>

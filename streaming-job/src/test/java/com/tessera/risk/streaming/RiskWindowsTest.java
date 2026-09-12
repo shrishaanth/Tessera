@@ -13,6 +13,8 @@ import org.junit.jupiter.api.Test;
 import com.tessera.risk.common.model.EventType;
 import com.tessera.risk.common.model.RiskTier;
 import com.tessera.risk.common.model.TelemetryEvent;
+import com.tessera.risk.common.spark.FeatureSchema;
+import com.tessera.risk.common.spark.FeatureVector;
 
 import static org.apache.spark.sql.functions.col;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -207,6 +209,39 @@ class RiskWindowsTest {
         long windowsForVehicle = vehicles.filter(col(RiskWindows.VEHICLE_ID).equalTo("VEH-001"))
                 .count();
         assertThat(windowsForVehicle).isEqualTo(9);
+    }
+
+    @Test
+    @DisplayName("vehicle windows carry every column the model's features need")
+    void vehicleWindowsSatisfyTheFeatureContract() {
+        // The model is fitted to features the batch job derives from Parquet and
+        // scored on features derived here from Kafka. Both derivations go through
+        // FeatureVector, so they cannot disagree on arithmetic — but only if this
+        // aggregation actually produces the inputs it needs. A column missing here
+        // would reach the model as a null feature, and a null feature does not throw:
+        // the model keeps returning confident probabilities that mean nothing.
+        assertThat(vehicles.columns())
+                .containsAll(java.util.Arrays.asList(FeatureSchema.AGGREGATE_COLUMNS));
+    }
+
+    @Test
+    @DisplayName("the feature derivation runs on a real windowed aggregate")
+    void featuresDeriveFromTheAggregation() {
+        // Proves the contract end to end rather than by column name alone: if an
+        // input were the wrong type, or the derivation disagreed with the aggregate's
+        // shape, this is where it surfaces.
+        Row row = FeatureVector.withFeatures(vehicles)
+                .filter(col(RiskWindows.VEHICLE_ID).equalTo("VEH-001")
+                        .and(col(RiskWindows.WINDOW_START).equalTo(BASE)))
+                .first();
+
+        assertThat(row.<Double>getAs(FeatureSchema.HARD_BRAKE_RATE))
+                .isCloseTo((double) V1_HARD_BRAKES / READINGS_PER_VEHICLE, within(1e-9));
+        assertThat(row.<Double>getAs(FeatureSchema.RISK_TIER_ORDINAL))
+                .isEqualTo((double) RiskTier.SAFE.ordinal());
+        // BASE is midnight UTC, so the window starts in hour zero.
+        assertThat(row.<Double>getAs(FeatureSchema.HOUR_OF_DAY)).isEqualTo(0.0);
+        assertThat(row.<Double>getAs(FeatureSchema.MOVING_RATIO)).isEqualTo(1.0);
     }
 
     private static Row vehicleRow(String vehicleId) {

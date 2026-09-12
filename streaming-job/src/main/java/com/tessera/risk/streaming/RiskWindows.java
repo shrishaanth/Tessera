@@ -5,6 +5,7 @@ import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 
 import com.tessera.risk.common.model.EventType;
+import com.tessera.risk.common.spark.FeatureSchema;
 
 import static com.tessera.risk.common.spark.TelemetrySchema.EVENT_TIME;
 import static com.tessera.risk.common.spark.TelemetrySchema.TELEMETRY;
@@ -36,13 +37,13 @@ public final class RiskWindows {
     // because the HBase writer, the alert rules and the tests all index into these
     // rows by name, and a typo in any one of them would otherwise only surface at
     // run time.
-    public static final String WINDOW_START = "windowStart";
+    public static final String WINDOW_START = FeatureSchema.WINDOW_START;
     public static final String WINDOW_END = "windowEnd";
-    public static final String READING_COUNT = "readingCount";
-    public static final String HARD_BRAKE_COUNT = "hardBrakeCount";
-    public static final String SPEED_VIOLATION_COUNT = "speedViolationCount";
-    public static final String INCIDENT_COUNT = "incidentCount";
-    public static final String AVG_SPEED_KPH = "avgSpeedKph";
+    public static final String READING_COUNT = FeatureSchema.READING_COUNT;
+    public static final String HARD_BRAKE_COUNT = FeatureSchema.HARD_BRAKE_COUNT;
+    public static final String SPEED_VIOLATION_COUNT = FeatureSchema.SPEED_VIOLATION_COUNT;
+    public static final String INCIDENT_COUNT = FeatureSchema.INCIDENT_COUNT;
+    public static final String AVG_SPEED_KPH = FeatureSchema.AVG_SPEED_KPH;
 
     // segment_metrics
     public static final String SEGMENT_ID = "segmentId";
@@ -52,12 +53,16 @@ public final class RiskWindows {
     public static final String RISK_INDEX = "riskIndex";
 
     // vehicle_risk
-    public static final String VEHICLE_ID = "vehicleId";
-    public static final String DRIVER_ID = "driverId";
-    public static final String RISK_TIER = "riskTier";
-    public static final String MAX_SPEED_KPH = "maxSpeedKph";
-    public static final String AVG_OVER_LIMIT_RATIO = "avgOverLimitRatio";
-    public static final String MAX_SEVERITY = "maxSeverity";
+    // Aliases of the shared feature contract, not independent declarations. The
+    // model is fitted to columns of these names, so a rename here that was not
+    // mirrored there would reach the model as a null feature rather than an error.
+    public static final String VEHICLE_ID = FeatureSchema.VEHICLE_ID;
+    public static final String DRIVER_ID = FeatureSchema.DRIVER_ID;
+    public static final String RISK_TIER = FeatureSchema.RISK_TIER;
+    public static final String MAX_SPEED_KPH = FeatureSchema.MAX_SPEED_KPH;
+    public static final String AVG_OVER_LIMIT_RATIO = FeatureSchema.AVG_OVER_LIMIT_RATIO;
+    public static final String MAX_SEVERITY = FeatureSchema.MAX_SEVERITY;
+    public static final String MOVING_RATIO = FeatureSchema.MOVING_RATIO;
     public static final String RISK_SCORE = "riskScore";
 
     private static final String COMPLIANT_COUNT = "compliantCount";
@@ -65,6 +70,14 @@ public final class RiskWindows {
 
     /** Source column for the speed aggregates: the raw reading, before windowing. */
     private static final String SPEED_KPH = "speedKph";
+
+    /**
+     * Speed below which a vehicle counts as stationary rather than driving.
+     *
+     * <p>Must match the batch job's threshold, or movingRatio would mean two
+     * different things either side of training.
+     */
+    private static final double MOVING_KPH = 1.0;
 
     private RiskWindows() {
     }
@@ -161,7 +174,12 @@ public final class RiskWindows {
                         // zero, which would drag the average down and understate how
                         // fast the vehicle was actually travelling relative to the law.
                         avg(overLimitRatio()).as(AVG_OVER_LIMIT_RATIO),
-                        max("severity").as(MAX_SEVERITY))
+                        max("severity").as(MAX_SEVERITY),
+                        // Not used by the rule-based score, but part of the model's
+                        // feature vector, and the batch job computes it too. A
+                        // feature the streaming job failed to produce would reach
+                        // the model as null rather than as an error.
+                        avg(isMoving()).as(MOVING_RATIO))
                 .withColumn(RISK_SCORE, RiskScoring.vehicleRiskScoreColumn())
                 .withColumn(WINDOW_START, expr("unix_millis(window.start)"))
                 .withColumn(WINDOW_END, expr("unix_millis(window.end)"))
@@ -179,6 +197,11 @@ public final class RiskWindows {
     private static Column isCompliant() {
         return when(col(SPEED_LIMIT_KPH).gt(0).and(col(SPEED_KPH).leq(col(SPEED_LIMIT_KPH))),
                 lit(1L)).otherwise(lit(0L));
+    }
+
+    /** 1 when the vehicle is in motion; averaged, this is the fraction of the window driven. */
+    private static Column isMoving() {
+        return when(col(SPEED_KPH).gt(MOVING_KPH), lit(1.0)).otherwise(lit(0.0));
     }
 
     private static Column overLimitRatio() {

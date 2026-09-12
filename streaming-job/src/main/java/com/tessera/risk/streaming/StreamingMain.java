@@ -1,6 +1,7 @@
 package com.tessera.risk.streaming;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.spark.api.java.function.VoidFunction2;
@@ -19,6 +20,7 @@ import com.tessera.risk.streaming.alert.AlertPublisher;
 import com.tessera.risk.streaming.alert.AlertRules;
 import com.tessera.risk.streaming.hbase.HBaseSchema;
 import com.tessera.risk.streaming.hbase.HBaseWriter;
+import com.tessera.risk.streaming.ml.RiskModel;
 
 /**
  * Entry point for the Spark Structured Streaming job (FR-2).
@@ -63,6 +65,7 @@ public final class StreamingMain {
         log.info("  windows     {} sliding every {}, watermark {}",
                 config.windowDuration(), config.slideDuration(), config.watermarkDelay());
         log.info("  checkpoint  {}", config.checkpointDir());
+        log.info("  model       {}", config.modelPath());
         log.info("All telemetry consumed by this job is simulated; see the project README.");
 
         HBaseSchema.ensureTables(
@@ -70,6 +73,9 @@ public final class StreamingMain {
                 HBASE_ATTEMPTS, HBASE_RETRY_MILLIS);
 
         SparkSession spark = session(config);
+        // Loaded once on the driver, not per batch: deserialising a pipeline is
+        // expensive and the model does not change while the query runs.
+        Optional<RiskModel> model = RiskModel.load(spark, config.modelPath());
         HBaseWriter writer = new HBaseWriter(config.hbaseZkQuorum(), config.hbaseZkPort());
         AlertPublisher publisher = new AlertPublisher(config);
         Runtime.getRuntime().addShutdownHook(new Thread(publisher::close, "alert-publisher-close"));
@@ -90,19 +96,25 @@ public final class StreamingMain {
 
         StreamingQuery vehicles = start(
                 RiskWindows.vehicleWindows(parsed, config), "vehicle-risk", config,
-                (batch, batchId) -> cached(batch, () -> {
-                    writer.writeVehicleRisk(batch);
-                    writer.writeDriverProfiles(batch);
-                    long now = System.currentTimeMillis();
-                    List<RiskAlert> raised = publisher.publish(
-                            AlertRules.evaluate(batch, config, now), now);
-                    log.info("batch {} | vehicle_risk rows={} alerts={}",
-                            batchId, batch.count(), raised.size());
-                    for (RiskAlert alert : raised) {
-                        log.warn("ALERT {} ({}) — {}",
-                                alert.vehicleId(), alert.riskTier(), alert.reason());
-                    }
-                }));
+                (batch, batchId) -> {
+                    // Scored before anything reads the batch, so the HBase write and
+                    // the alert rules both see the prediction columns. Without a
+                    // trained model this is the identity and the columns are absent.
+                    Dataset<Row> scored = model.isPresent() ? model.get().score(batch) : batch;
+                    cached(scored, () -> {
+                        writer.writeVehicleRisk(scored);
+                        writer.writeDriverProfiles(scored);
+                        long now = System.currentTimeMillis();
+                        List<RiskAlert> raised = publisher.publish(
+                                AlertRules.evaluate(scored, config, now), now);
+                        log.info("batch {} | vehicle_risk rows={} alerts={}",
+                                batchId, scored.count(), raised.size());
+                        for (RiskAlert alert : raised) {
+                            log.warn("ALERT {} ({}) — {}",
+                                    alert.vehicleId(), alert.riskTier(), alert.reason());
+                        }
+                    });
+                });
 
         log.info("Streaming queries started: {}, {}", segments.name(), vehicles.name());
         spark.streams().awaitAnyTermination();

@@ -254,11 +254,16 @@ class FleetSimulatorTest {
     }
 
     @Test
-    void knowingOnlyTheDriverTierDoesNotSolveTheTask() {
-        // If any tier crossed 50%, a classifier could reach the majority-class
-        // baseline knowing nothing but who is driving, and every later claim that the
-        // model learned something from behaviour would be unfalsifiable. The tiers
-        // must shift the odds without settling them.
+    void noTierIsMoreLikelyToOffendThanNot() {
+        // The tiers shift the odds without settling them: even the riskiest driver is
+        // more likely than not to get through the next window without an incident.
+        //
+        // This does NOT mean the tier is a weak predictor. Measured against the held
+        // out split, flagging every RISKY driver reaches a lift of about 2.6, and the
+        // trained models only match it. What the property below rules out is
+        // something narrower and still worth having: that no tier is so predictive
+        // that the *accuracy-maximising* answer is anything but "no incident", which
+        // is what keeps the majority-class baseline the honest thing to quote.
         Map<RiskTier, long[]> byTier = labelCountsByTier();
         for (Map.Entry<RiskTier, long[]> entry : byTier.entrySet()) {
             long[] counts = entry.getValue();

@@ -7,7 +7,7 @@ import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.RowFactory;
 
-import com.tessera.risk.common.model.RiskTier;
+import com.tessera.risk.common.spark.FeatureSchema;
 
 import scala.Tuple2;
 
@@ -47,7 +47,8 @@ public final class FeatureExtraction {
     public record WindowKey(String vehicleId, long window) implements Serializable { }
 
     /**
-     * Raw telemetry rows to labelled feature rows matching {@link FeatureSchema}.
+     * Raw telemetry rows to labelled aggregate rows matching
+     * {@link FeatureSchema#AGGREGATE_ROW}.
      *
      * @param telemetry     archive rows carrying the telemetry schema
      * @param windowSeconds tumbling window width
@@ -100,50 +101,33 @@ public final class FeatureExtraction {
                 toRow(entry._1(), entry._2()._1(), entry._2()._2(), windowMillis));
     }
 
+    /**
+     * Project to {@link FeatureSchema#AGGREGATE_ROW} — the aggregates and the label,
+     * not the features.
+     *
+     * <p>The rates, the hour and the tier ordinal are deliberately not computed
+     * here. {@link com.tessera.risk.common.spark.FeatureVector} derives them, and
+     * the streaming job applies that same derivation to its own aggregates. If this
+     * method built the feature vector itself there would be two implementations of
+     * it, and a model trained against one would be scored against the other.
+     */
     private static Row toRow(WindowKey key, WindowAggregate aggregate,
                              long incidentsInNextWindow, long windowMillis) {
-        long windowStart = key.window() * windowMillis;
         return RowFactory.create(
                 key.vehicleId(),
                 aggregate.driverId(),
-                windowStart,
-                aggregate.hardBrakeRate(),
-                aggregate.speedViolationRate(),
-                aggregate.incidentRate(),
+                aggregate.riskTier(),
+                key.window() * windowMillis,
+                aggregate.readings(),
+                aggregate.hardBrakes(),
+                aggregate.speedViolations(),
+                aggregate.incidents(),
                 aggregate.avgSpeedKph(),
                 aggregate.maxSpeed(),
                 aggregate.avgOverLimitRatio(),
                 aggregate.maxSeverity(),
                 aggregate.movingRatio(),
-                (double) hourOf(windowStart),
-                (double) tierOrdinal(aggregate.riskTier()),
-                aggregate.readings(),
                 // The label, and the only place the following window is consulted.
                 incidentsInNextWindow > 0 ? 1.0 : 0.0);
-    }
-
-    /**
-     * Hour of day in UTC.
-     *
-     * <p>Included because driving risk is not uniform across a day in reality, and a
-     * model given the hour can learn that if it is there. In this simulation it very
-     * likely is not — the generator has no diurnal cycle — so this feature is
-     * expected to carry close to zero importance. That is worth seeing rather than
-     * assuming: a feature that turns out not to matter is a finding, and leaving it
-     * out would have hidden it.
-     */
-    private static long hourOf(long epochMillis) {
-        return Math.floorMod(epochMillis / 3_600_000L, 24L);
-    }
-
-    private static int tierOrdinal(String riskTier) {
-        try {
-            return RiskTier.valueOf(riskTier).ordinal();
-        } catch (IllegalArgumentException | NullPointerException e) {
-            // An unrecognised tier lands between the extremes rather than being
-            // treated as the safest or the riskiest, either of which would be a
-            // stronger claim than the data supports.
-            return RiskTier.AVERAGE.ordinal();
-        }
     }
 }

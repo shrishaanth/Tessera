@@ -15,6 +15,8 @@ import org.junit.jupiter.api.Test;
 import com.tessera.risk.common.model.EventType;
 import com.tessera.risk.common.model.RiskTier;
 import com.tessera.risk.common.model.TelemetryEvent;
+import com.tessera.risk.common.spark.FeatureSchema;
+import com.tessera.risk.common.spark.FeatureVector;
 import com.tessera.risk.common.spark.TelemetrySchema;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -171,7 +173,8 @@ class FeatureExtractionTest {
     /**
      * Runs the extraction and returns the resulting rows.
      *
-     * <p>The result is bound to {@link FeatureSchema#TRAINING_ROW} before collecting,
+     * <p>The result is bound to {@link FeatureSchema#AGGREGATE_ROW} and put through
+     * the shared feature derivation before collecting,
      * exactly as {@code BatchMain} does. Rows built by {@code RowFactory} carry no
      * schema of their own, so this is both what makes them addressable by column
      * name and a check that the row width and the schema still agree.
@@ -183,10 +186,10 @@ class FeatureExtractionTest {
             telemetry.addAll(w);
         }
         Dataset<Row> frame = spark.createDataFrame(telemetry, TelemetrySchema.TELEMETRY);
-        return spark.createDataFrame(
+        return FeatureVector.withFeatures(spark.createDataFrame(
                         FeatureExtraction.labelledRows(
                                 frame.javaRDD(), WINDOW_SECONDS, MIN_READINGS),
-                        FeatureSchema.TRAINING_ROW)
+                        FeatureSchema.AGGREGATE_ROW))
                 .collectAsList();
     }
 

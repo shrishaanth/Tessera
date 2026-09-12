@@ -5,9 +5,13 @@ import java.util.List;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
+
 import org.apache.spark.sql.SaveMode;
 import org.apache.spark.sql.SparkSession;
 import org.apache.spark.storage.StorageLevel;
+
+import com.tessera.risk.common.spark.FeatureSchema;
+import com.tessera.risk.common.spark.FeatureVector;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -62,8 +66,10 @@ public final class BatchMain {
         JavaRDD<Row> labelled = FeatureExtraction.labelledRows(
                 archive.javaRDD(), config.windowSeconds(), config.minReadings());
 
-        Dataset<Row> features = spark
-                .createDataFrame(labelled, FeatureSchema.TRAINING_ROW)
+        // The RDD stage produces aggregates; the features are derived by the same
+        // shared code the streaming job uses, so the two cannot drift apart.
+        Dataset<Row> features = FeatureVector
+                .withFeatures(spark.createDataFrame(labelled, FeatureSchema.AGGREGATE_ROW))
                 // Written once and then summarised twice; without this the whole
                 // RDD pipeline, shuffle and join included, would run three times.
                 .persist(StorageLevel.MEMORY_AND_DISK());
