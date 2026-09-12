@@ -163,6 +163,64 @@ services:
       - "com.tessera.risk.streaming.StreamingMain"
       - "/opt/tessera/streaming-job-1.0.0.jar"
 
+  # Builds the training archive. One-shot: it runs, writes Parquet, and exits.
+  #
+  #   docker compose --profile jobs run --rm archive-generator
+  #
+  # Depends on neither Kafka nor HBase — it drives the simulation straight to
+  # files, which is the whole point of having the physics in its own module.
+  archive-generator:
+    image: apache/spark:3.5.3-scala2.12-java17-ubuntu
+    profiles: ["jobs"]
+    user: root
+    environment:
+      TESSERA_ARCHIVE_PATH: "/data/archive/telemetry"
+      TESSERA_ARCHIVE_DAYS: "7"
+    volumes:
+      - ./archive-generator/target:/opt/tessera:ro
+      - ./infra/spark:/opt/tessera-conf:ro
+      - ./data:/data
+    entrypoint: ["/opt/spark/bin/spark-submit"]
+    command:
+      - "--master"
+      - "local[*,4]"
+      # More than the streaming job gets: this one holds six simulated hours of
+      # telemetry as Spark rows before each write, roughly 130 MB, and Parquet's
+      # writer buffers a row group on top of that.
+      - "--driver-memory"
+      - "2500m"
+      - "--driver-java-options"
+      - "-Dlog4j.configurationFile=file:///opt/tessera-conf/log4j2.properties"
+      - "--class"
+      - "com.tessera.risk.archive.ArchiveMain"
+      - "/opt/tessera/archive-generator-1.0.0.jar"
+
+  # Turns the archive into a labelled training set. Also one-shot.
+  #
+  #   docker compose --profile jobs run --rm batch-job
+  batch-job:
+    image: apache/spark:3.5.3-scala2.12-java17-ubuntu
+    profiles: ["jobs"]
+    user: root
+    environment:
+      TESSERA_ARCHIVE_PATH: "/data/archive/telemetry"
+      TESSERA_FEATURES_PATH: "/data/features"
+    volumes:
+      - ./batch-job/target:/opt/tessera:ro
+      - ./infra/spark:/opt/tessera-conf:ro
+      - ./data:/data
+    entrypoint: ["/opt/spark/bin/spark-submit"]
+    command:
+      - "--master"
+      - "local[*,4]"
+      - "--driver-memory"
+      - "2g"
+      - "--driver-java-options"
+      - "-Dlog4j.configurationFile=file:///opt/tessera-conf/log4j2.properties"
+      - "--class"
+      - "com.tessera.risk.batch.BatchMain"
+      - "/opt/tessera/batch-job-1.0.0.jar"
+
 volumes:
   kafka-data:
   hbase-data:

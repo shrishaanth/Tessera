@@ -23,6 +23,11 @@ Thumbs.db
 # Logs
 *.log
 
+# Generated data. The Parquet archive is hundreds of megabytes and is rebuilt by
+# running the generator; committing it would put a derived artefact in history
+# that nothing can diff.
+data/
+
 # Spark local run artefacts. The checkpoint is streaming state, not source: it
 # pins Kafka offsets and window state to one machine's run, so committing it
 # would make another clone resume from offsets it never consumed.

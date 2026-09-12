@@ -6,8 +6,8 @@ import org.apache.spark.sql.Row;
 
 import com.tessera.risk.common.model.EventType;
 
-import static com.tessera.risk.streaming.TelemetrySchema.EVENT_TIME;
-import static com.tessera.risk.streaming.TelemetrySchema.TELEMETRY;
+import static com.tessera.risk.common.spark.TelemetrySchema.EVENT_TIME;
+import static com.tessera.risk.common.spark.TelemetrySchema.TELEMETRY;
 import static org.apache.spark.sql.functions.approx_count_distinct;
 import static org.apache.spark.sql.functions.avg;
 import static org.apache.spark.sql.functions.col;

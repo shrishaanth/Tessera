@@ -1,4 +1,4 @@
-package com.tessera.risk.producer;
+package com.tessera.risk.simulation;
 
 import java.util.Random;
 

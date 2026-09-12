@@ -17,7 +17,7 @@
     <dependencies>
         <dependency>
             <groupId>com.tessera.risk</groupId>
-            <artifactId>common</artifactId>
+            <artifactId>simulation</artifactId>
             <version>${project.version}</version>
         </dependency>
         <dependency>

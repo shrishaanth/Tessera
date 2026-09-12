@@ -1,4 +1,4 @@
-package com.tessera.risk.streaming;
+package com.tessera.risk.common.spark;
 
 import java.lang.reflect.RecordComponent;
 import java.util.Arrays;

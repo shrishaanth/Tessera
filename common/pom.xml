@@ -23,5 +23,23 @@
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
         </dependency>
+
+        <!--
+            Provided, and only for TelemetrySchema. Three modules now write or read
+            telemetry through Spark — the archive generator, the batch feature job and
+            the streaming job — and all three must agree on its shape. One declaration
+            here beats three that can drift apart, and a drifting schema does not fail
+            loudly: it yields a column of nulls.
+
+            Provided scope is what keeps this honest. It is not transitive, so nothing
+            that merely depends on common — simulation, event-producer — acquires
+            Spark. The dependency exists at compile time for one class and vanishes
+            everywhere else.
+        -->
+        <dependency>
+            <groupId>org.apache.spark</groupId>
+            <artifactId>spark-sql_${scala.binary.version}</artifactId>
+            <scope>provided</scope>
+        </dependency>
     </dependencies>
 </project>

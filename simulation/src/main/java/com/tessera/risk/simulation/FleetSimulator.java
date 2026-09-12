@@ -1,4 +1,4 @@
-package com.tessera.risk.producer;
+package com.tessera.risk.simulation;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -26,9 +26,36 @@ public final class FleetSimulator {
     private final SimulatorConfig config;
     private final RoadNetwork network;
 
+    /** The whole fleet. */
     public FleetSimulator(RoadNetwork network, SimulatorConfig config) {
+        this(network, config, 0, config.vehicleCount());
+    }
+
+    /**
+     * A contiguous slice of the fleet, vehicles {@code [fromIndex, toIndex)}.
+     *
+     * <p>Exists so the offline generator can simulate different vehicles in parallel
+     * on different executors. That is sound because vehicles in this model are
+     * genuinely independent — each plans its own route and reacts only to the road
+     * geometry and its own speed, with no interaction between them. There is no
+     * traffic, no queueing and no collision, so splitting the fleet across machines
+     * produces exactly the readings a single process would have produced.
+     *
+     * <p>The seeding is what makes that literally true rather than approximately so.
+     * The per-vehicle seeds are drawn in index order from one master stream, and that
+     * stream is advanced for every vehicle whether or not this slice instantiates it.
+     * Vehicle 17 therefore receives the same seed, and drives exactly the same route,
+     * no matter how the fleet was divided.
+     */
+    public FleetSimulator(RoadNetwork network, SimulatorConfig config,
+                          int fromIndex, int toIndex) {
         this.network = network;
         this.config = config;
+
+        if (fromIndex < 0 || toIndex > config.vehicleCount() || fromIndex > toIndex) {
+            throw new IllegalArgumentException("Vehicle slice [" + fromIndex + "," + toIndex
+                    + ") is not within a fleet of " + config.vehicleCount());
+        }
 
         RoutePlanner planner = new RoutePlanner(
                 network, config.comfortBrakeMps2(), config.maxSpeedMps());
@@ -40,14 +67,20 @@ public final class FleetSimulator {
 
         Random seedRnd = new Random(config.seed());
         for (int i = 0; i < config.vehicleCount(); i++) {
+            // Drawn for every vehicle, used only for those in this slice. Skipping the
+            // draw would shift every later vehicle's seed and make a partitioned run
+            // disagree with a whole-fleet one.
+            long seed = seedRnd.nextLong();
+            if (i < fromIndex || i >= toIndex) {
+                continue;
+            }
             String vehicleId = String.format("VEH-%03d", i + 1);
             String driverId = String.format("DRV-%03d", i + 1);
             RiskTier tier = assignTier(i);
             // Each vehicle gets its own RNG stream so that adding or removing a
             // vehicle does not perturb the behaviour of the others.
-            Random vehicleRnd = new Random(seedRnd.nextLong());
             vehicles.add(new SimulatedVehicle(
-                    vehicleId, driverId, tier, network, planner, config, pool, vehicleRnd));
+                    vehicleId, driverId, tier, network, planner, config, pool, new Random(seed)));
         }
     }
 

@@ -1,4 +1,4 @@
-package com.tessera.risk.producer;
+package com.tessera.risk.simulation;
 
 /**
  * Tunables for the fleet simulation and for event classification.
@@ -28,7 +28,7 @@ package com.tessera.risk.producer;
  * @param stopDwellTicksMax    longest pause at a tour stop
  * @param seed                 RNG seed; fixed so runs are reproducible
  */
-record SimulatorConfig(
+public record SimulatorConfig(
         int vehicleCount,
         long tickMillis,
         double maxSpeedMps,
@@ -46,9 +46,9 @@ record SimulatorConfig(
         double speedingFactorMax,
         int stopDwellTicksMin,
         int stopDwellTicksMax,
-        long seed) {
+        long seed) implements java.io.Serializable {
 
-    static SimulatorConfig fromEnvironment() {
+    public static SimulatorConfig fromEnvironment() {
         return new SimulatorConfig(
                 envInt("TESSERA_VEHICLE_COUNT", 24),
                 envLong("TESSERA_TICK_MILLIS", 1000L),
@@ -58,8 +58,20 @@ record SimulatorConfig(
                 envDouble("TESSERA_RISKY_BRAKE", 4.5),
                 envDouble("TESSERA_EMERGENCY_BRAKE", 8.0),
                 envDouble("TESSERA_HARD_BRAKE_THRESHOLD", 3.5),
-                envDouble("TESSERA_INCIDENT_BRAKE_THRESHOLD", 6.0),
-                envDouble("TESSERA_INCIDENT_COMBO_THRESHOLD", 5.0),
+                // Calibrated against the label the model is asked to predict, not
+                // against the per-reading rate, because the two are very different
+                // numbers. At 6.0/5.0 an incident is 0.33% of readings, which sounds
+                // rare and is not: compounded over the 300 readings in a five-minute
+                // window it makes 40% of training rows positive, and "will this
+                // vehicle brake hard in the next five minutes" becomes a coin flip
+                // that a majority-class guess already answers 60% of the time.
+                //
+                // At 6.5/5.8 an incident is 0.04% of readings — roughly 1.4 per
+                // vehicle-hour, which is the right order for severe braking in real
+                // telematics — and 10% of training rows are positive. Past 7.0 the
+                // deceleration distribution runs out and nothing qualifies at all.
+                envDouble("TESSERA_INCIDENT_BRAKE_THRESHOLD", 6.5),
+                envDouble("TESSERA_INCIDENT_COMBO_THRESHOLD", 5.8),
                 envDouble("TESSERA_SPEED_VIOLATION_RATIO", 1.15),
                 envInt("TESSERA_VIOLATION_SUSTAIN_TICKS", 3),
                 envDouble("TESSERA_SPEEDING_EPISODE_CHANCE", 0.010),
@@ -71,7 +83,7 @@ record SimulatorConfig(
     }
 
     /** Seconds represented by one tick. */
-    double tickSeconds() {
+    public double tickSeconds() {
         return tickMillis / 1000.0;
     }
 

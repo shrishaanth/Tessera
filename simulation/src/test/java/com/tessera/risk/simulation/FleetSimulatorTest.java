@@ -1,4 +1,4 @@
-package com.tessera.risk.producer;
+package com.tessera.risk.simulation;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -197,6 +197,130 @@ class FleetSimulatorTest {
         assertThat(100.0 * incidents / total)
                 .as("incidents as a percentage of all readings")
                 .isLessThan(5.0);
+    }
+
+    @Test
+    void aSlicedFleetDrivesIdenticallyToAWholeOne() {
+        // The offline generator simulates different vehicles on different executors.
+        // That is only valid if splitting the fleet changes nothing about what each
+        // vehicle does — so this drives the whole fleet, then drives it again in two
+        // halves, and requires every reading to match exactly.
+        //
+        // The failure this guards against is quiet. If a slice did not advance the
+        // master seed stream for the vehicles it skips, every vehicle after the split
+        // would get a different seed and drive a different route. The archive would
+        // still look entirely plausible; it simply would not be the data the live
+        // producer generates, and a model trained on it would be fitted to a fleet
+        // that does not exist.
+        int fleetSize = config.vehicleCount();
+        int half = fleetSize / 2;
+
+        FleetSimulator whole = new FleetSimulator(network, config);
+        FleetSimulator lower = new FleetSimulator(network, config, 0, half);
+        FleetSimulator upper = new FleetSimulator(network, config, half, fleetSize);
+
+        long t = 1_700_000_000_000L;
+        for (int i = 0; i < 200; i++, t += config.tickMillis()) {
+            List<TelemetryEvent> expected = whole.tick(t);
+            List<TelemetryEvent> actual = new ArrayList<>(lower.tick(t));
+            actual.addAll(upper.tick(t));
+
+            assertThat(actual)
+                    .as("tick %d: sliced fleet must reproduce the whole fleet exactly", i)
+                    .containsExactlyElementsOf(expected);
+        }
+    }
+
+    @Test
+    void theTrainingLabelIsImbalancedButNotDegenerate() {
+        // The per-reading incident rate is not the number that matters. The model is
+        // asked whether an incident occurs in the *next* window, and a rate that looks
+        // rare per reading compounds over the hundreds of readings in a window: at a
+        // third of a percent, two in five windows end up positive and the question
+        // becomes a coin flip. This asserts the property the whole ML stage rests on,
+        // and it is one a per-reading assertion cannot see.
+        double positiveRate = 100.0 * positiveLabelRate();
+
+        // Rare enough that accuracy is a worthless metric and precision and recall
+        // have to be reported instead.
+        assertThat(positiveRate)
+                .as("percentage of labelled rows that are positive")
+                .isLessThan(25.0);
+        // But not so rare that a training set of any reasonable size holds too few
+        // positives to learn from.
+        assertThat(positiveRate)
+                .as("percentage of labelled rows that are positive")
+                .isGreaterThan(2.0);
+    }
+
+    @Test
+    void knowingOnlyTheDriverTierDoesNotSolveTheTask() {
+        // If any tier crossed 50%, a classifier could reach the majority-class
+        // baseline knowing nothing but who is driving, and every later claim that the
+        // model learned something from behaviour would be unfalsifiable. The tiers
+        // must shift the odds without settling them.
+        Map<RiskTier, long[]> byTier = labelCountsByTier();
+        for (Map.Entry<RiskTier, long[]> entry : byTier.entrySet()) {
+            long[] counts = entry.getValue();
+            if (counts[0] == 0) {
+                continue;
+            }
+            assertThat(100.0 * counts[1] / counts[0])
+                    .as("positive rate for %s, which must not decide the label alone",
+                            entry.getKey())
+                    .isLessThan(50.0);
+        }
+    }
+
+    /** Windows of {@code WINDOW_TICKS} readings, labelled by the next window's incidents. */
+    private static double positiveLabelRate() {
+        long rows = 0;
+        long positives = 0;
+        for (long[] counts : labelCountsByTier().values()) {
+            rows += counts[0];
+            positives += counts[1];
+        }
+        return rows == 0 ? 0.0 : (double) positives / rows;
+    }
+
+    /** Per tier: {@code [labelled rows, positive rows]}. */
+    private static Map<RiskTier, long[]> labelCountsByTier() {
+        int windowTicks = 300;
+        Map<String, List<Integer>> incidentsPerWindow = new HashMap<>();
+        Map<String, RiskTier> tierOf = new HashMap<>();
+
+        for (int tick = 0; tick < frames.size(); tick++) {
+            int window = tick / windowTicks;
+            for (TelemetryEvent event : frames.get(tick)) {
+                tierOf.put(event.vehicleId(), event.riskTier());
+                List<Integer> windows = incidentsPerWindow.computeIfAbsent(
+                        event.vehicleId(), k -> new ArrayList<>());
+                while (windows.size() <= window) {
+                    windows.add(0);
+                }
+                if (event.eventType() == EventType.INCIDENT) {
+                    windows.set(window, windows.get(window) + 1);
+                }
+            }
+        }
+
+        Map<RiskTier, long[]> byTier = new EnumMap<>(RiskTier.class);
+        for (RiskTier tier : RiskTier.values()) {
+            byTier.put(tier, new long[2]);
+        }
+        for (Map.Entry<String, List<Integer>> entry : incidentsPerWindow.entrySet()) {
+            long[] counts = byTier.get(tierOf.get(entry.getKey()));
+            List<Integer> windows = entry.getValue();
+            // The final window has no successor, so it cannot be labelled — the same
+            // exclusion the batch feature job has to make.
+            for (int w = 0; w + 1 < windows.size(); w++) {
+                counts[0]++;
+                if (windows.get(w + 1) > 0) {
+                    counts[1]++;
+                }
+            }
+        }
+        return byTier;
     }
 
     @Test

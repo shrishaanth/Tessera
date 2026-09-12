@@ -18,16 +18,36 @@ requirements specification is in `../srs/Tessera_Risk_SRS.docx`.
 ## Architecture
 
 ```
-Event Producer ──▶ Kafka ──▶ Spark Structured Streaming ──▶ HBase ──▶ Reporting API ──▶ Dashboard
-                                      ▲
-                                      │ loads trained model
-Offline Generator ──▶ Parquet ──▶ Batch RDD Job ──▶ Spark MLlib ──┘
+                    ┌─────────────┐
+                    │ simulation  │  physics, routing, event classification
+                    └──────┬──────┘
+              ┌────────────┴────────────┐
+              ▼                         ▼
+      Event Producer            Archive Generator
+              │                         │
+              ▼                         ▼
+            Kafka                    Parquet
+              │                         │
+              ▼                         ▼
+   Structured Streaming          Batch RDD Job
+              │                         │
+              ▼                         ▼
+            HBase                 Spark MLlib
+              │                         │
+              ▼                         └──▶ model ──┐
+      Reporting API ──▶ Dashboard                    │
+              ▲                                      │
+              └──────── scored by streaming ◀────────┘
 ```
 
-The live path and the training path are decoupled on purpose: the historical
-archive used for model training is generated offline in bulk rather than by
-archiving the live stream, so a large corpus can be produced in one pass instead
-of waiting for wall-clock time to accumulate.
+The live path and the training path are decoupled on purpose: the archive is
+generated offline in bulk rather than by capturing the live stream, so a week of
+training data takes minutes instead of a week.
+
+That is only legitimate because both paths drive the **same** `simulation` module.
+A model fitted to the archive is valid against the live stream precisely because
+the physics and the event thresholds behind them are one implementation, not two
+that have to be kept in step by hand.
 
 ## Stack
 
@@ -49,10 +69,12 @@ support only arrived in Spark 4.0.
 
 | Module | Status | Purpose |
 |---|---|---|
-| `common` | ✅ | Road network, geodesy, shared event model |
-| `event-producer` | ✅ | Fleet simulation and Kafka telemetry publishing |
+| `common` | ✅ | Road network, geodesy, shared event and Spark schema |
+| `simulation` | ✅ | Vehicle physics, routing, behavioural event classification |
+| `event-producer` | ✅ | Kafka telemetry publishing at wall-clock pace |
+| `archive-generator` | ✅ | Offline bulk generation into the Parquet archive |
 | `streaming-job` | ✅ | Windowed aggregation, HBase writes, alerting |
-| `batch-job` | planned | RDD feature engineering over the Parquet archive |
+| `batch-job` | ✅ | RDD feature engineering over the Parquet archive |
 | `ml-training` | planned | MLlib classifier training and evaluation |
 | `reporting-api` | planned | HBase reads for the dashboard |
 | `frontend` | carried over | Leaflet dashboard, to be re-themed for risk |
@@ -177,23 +199,40 @@ model downstream could beat a trivial baseline and the pipeline would be measuri
 noise.
 
 The streaming tests run the real aggregations against a static DataFrame, so
-windowing is verified without standing up a broker. Three of them guard failures
-that would otherwise be silent: that the Spark risk-score expression agrees with
-the documented Java formula, that the Spark schema still matches the
-`TelemetryEvent` record (a renamed field yields a column of nulls, not an error),
-and that the score keeps separating the driver tiers.
+windowing is verified without standing up a broker. Several tests exist
+specifically to catch failures that would otherwise be silent — the ones that
+produce plausible-looking wrong data rather than an exception:
+
+- The Spark risk-score expression agrees with the documented Java formula. They are
+  written twice, so they can disagree.
+- The Spark schema still matches the `TelemetryEvent` record. A renamed field gives
+  a column of nulls, not an error, and every aggregate downstream quietly becomes
+  zero.
+- Telemetry rows map to the right Parquet columns. Transposing two same-typed
+  columns writes a valid file in which latitude is stored as longitude.
+- A sliced fleet reproduces a whole fleet reading for reading. If it did not, the
+  archive would describe a fleet that does not exist.
+- The label comes from the *following* window. Shifting the join the wrong way would
+  label each window with incidents it already contains, and the model would score
+  beautifully while predicting the past.
+- The window aggregate's combiner is associative, since Spark applies it in whatever
+  order partitioning produces.
 
 > Spark's tests need a Java 17 runtime — see **Java version** above. With the
-> toolchain configured, `mvn test` runs all 58 on any JDK.
+> toolchain configured, `mvn test` runs all 83 on any JDK.
 
 To inspect the event distribution directly:
 
 ```bash
-cd event-producer
-mvn -q dependency:build-classpath -Dmdep.outputFile=target/cp.txt
+cd simulation
+mvn -q test-compile dependency:build-classpath -Dmdep.outputFile=target/cp.txt
 java -cp "target/classes;target/test-classes;$(cat target/cp.txt)" \
-  com.tessera.risk.producer.DistributionDiagnostic 3600
+  com.tessera.risk.simulation.DistributionDiagnostic 14400
 ```
+
+It reports per-reading event rates *and* the balance of the training label, because
+the two are very different numbers and only the second says whether the prediction
+task is well-posed. See **The label** above.
 
 ## How unsafe behaviour is generated
 
@@ -208,6 +247,67 @@ This matters for the machine learning. Because the precursors and the incidents
 share a single cause, precursor density genuinely predicts incidents — which is
 what makes the prediction task learnable for a real reason rather than being an
 uncorrelated coin flip dressed up as a model.
+
+## Building the training set
+
+Two one-shot jobs, run in order:
+
+```bash
+mvn -q install -DskipTests
+docker compose --profile jobs run --rm archive-generator
+docker compose --profile jobs run --rm batch-job
+```
+
+The generator writes seven simulated days — about 14.5 million readings — as
+Parquet partitioned by date. The fleet is split into slices simulated in parallel,
+which is sound because vehicles in this model never interact: no traffic, no
+queueing, no collisions. `FleetSimulatorTest` asserts reading by reading that a
+sliced run reproduces a whole-fleet run exactly, since the whole parallel design
+rests on it.
+
+The batch job then turns that into labelled training rows using the RDD API.
+
+### The label, and why it needed recalibrating
+
+The label is whether a vehicle has an incident in the window **after** the one the
+features describe. Getting the balance right took measurement rather than
+intuition, because the two obvious numbers disagree badly:
+
+| incident threshold | per-reading rate | positive **rows** | majority baseline |
+|---|---|---|---|
+| 6.0 m/s² | 0.33% | **39.9%** | 60.1% |
+| 6.5 m/s² | 0.04% | **10.2%** | 89.8% |
+| 7.0 m/s² | 0.00% | 0% | — |
+
+A per-reading rate of a third of a percent sounds rare. Compounded over the 300
+readings in a five-minute window it is nearly a coin flip, and "will this vehicle
+brake hard in the next five minutes" stops being a question worth asking. Braking
+at 6 m/s² every five minutes is not plausible driving either — real telematics puts
+severe braking at a few events per hour.
+
+At 6.5 m/s² an incident is about 1.4 per vehicle-hour and 10% of rows are positive.
+Two properties make that a task worth posing:
+
+- **Accuracy becomes useless.** Predicting "no incident" every time scores 89.8%, so
+  the next stage has to report precision and recall.
+- **Knowing the driver is not enough.** Positive rates run SAFE 6.4%, AVERAGE 9.2%,
+  RISKY 25.0% — every tier below half, so a tier-only classifier collapses onto the
+  majority baseline. Any lift has to come from behaviour.
+
+Both are asserted in `FleetSimulatorTest`, because a change to the thresholds could
+otherwise quietly destroy them.
+
+### Feature windows tumble
+
+The streaming job slides its windows by a minute; training windows do not overlap.
+Overlapping rows share readings, so a row in the training split and one in the test
+split could describe much of the same driving — the model would be scored partly on
+data it was fitted to.
+
+The label is built by joining the window aggregate against a copy of itself keyed
+one window earlier. The inner join then pairs window *w*'s features with *w+1*'s
+incidents, and windows with no successor drop out on their own, which is right
+since they cannot be labelled.
 
 ## What the streaming job computes
 

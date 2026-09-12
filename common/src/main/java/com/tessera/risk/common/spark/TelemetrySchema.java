@@ -1,4 +1,4 @@
-package com.tessera.risk.streaming;
+package com.tessera.risk.common.spark;
 
 import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.StructType;

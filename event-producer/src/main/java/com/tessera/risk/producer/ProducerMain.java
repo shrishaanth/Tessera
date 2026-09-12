@@ -10,6 +10,8 @@ import com.tessera.risk.common.model.EventType;
 import com.tessera.risk.common.model.TelemetryEvent;
 import com.tessera.risk.common.road.RoadNetwork;
 import com.tessera.risk.common.road.RoadNetworkLoader;
+import com.tessera.risk.simulation.FleetSimulator;
+import com.tessera.risk.simulation.SimulatorConfig;
 
 /**
  * Entry point for the live event producer.
