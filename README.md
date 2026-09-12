@@ -1,238 +1,267 @@
-# Tessera Fleet
+# Tessera Risk
 
-Real-Time Fleet Monitoring & Operations Platform. A live map, geofencing and
-dwell-time reporting for a small fleet (20–200 vehicles). Positions come from a
-**pre-generated, physically validated trajectory dataset** (default) or a **real
-public GTFS-Realtime feed**. Built to the SRS in `../srs/`.
+A real-time fleet driver-behaviour risk analytics pipeline. Simulated vehicles drive
+a real OpenStreetMap road network; the system detects unsafe driving in motion,
+aggregates it into windowed risk metrics with Spark, stores those in HBase, and
+predicts which vehicles are trending toward a safety incident in the next few
+minutes.
 
-The system is two cooperating layers (SRS §2.1):
+Built as the final package for **Big Data and Modern Databases**. The full
+requirements specification is in `../srs/Tessera_Risk_SRS.docx`.
 
-- **Live layer** — an in-memory geospatial index (Redis) holding every vehicle's
-  current position and status. Serves the live map with no disk I/O in the path.
-- **Durable layer** — PostgreSQL + PostGIS + TimescaleDB for history and
-  reporting. Written asynchronously (write-behind), never in the critical path.
-  Behind a `DurableStore` seam with an in-memory default, so the system runs with
-  no database and the live layer is unaffected if the database is down (NFR-3).
+> **All vehicle data is simulated.** Vehicles are driven along a real road network
+> under real posted speed limits and enforced physical acceleration and braking
+> limits. No physical vehicles, telematics feed, or personal data are involved.
+> No public dataset of commercial fleet telemetry exists, which is why the data is
+> generated rather than collected.
 
-> **Scope note.** The dispatch feature — one-click job assignment,
-> nearest-available-vehicle ranking, and the on-time-arrival report — was removed,
-> along with the old live simulator whose vehicles wandered at random and
-> teleported across the map. Positions now come from a **pre-generated,
-> physically validated trajectory dataset** (default) or a **real GTFS-Realtime
-> feed**, and the product keeps only the features that data actually supports.
-
-## Features
-
-**Live map (SRS §8, FR-1)**
-
-| Req | Delivered |
-|-----|-----------|
-| FR-1.1 | Live map, vehicles colour-coded by status (active / on site / offline) |
-| FR-1.2 | Positions refresh in the UI within ~1 s of ingestion (WebSocket push) |
-| FR-1.3 | Status filter on the map |
-| FR-1.4 | Vehicle detail: current site, recent geofence events, status history |
-| FR-7 | Data-source transparency panel; the substitute feed disclosed plainly |
-| NFR-7 | All API and WebSocket endpoints require an authenticated session |
-
-**Geofencing & durable persistence (FR-3)**
-
-| Req | Delivered |
-|-----|-----------|
-| FR-3.1 | Define a customer site as a polygon (draw on map) or a centre + radius |
-| FR-3.2 | Automatic enter/exit detection per position fix, timestamped, recorded |
-| FR-3.3 | Dwell time computed and stored on each exit |
-| FR-3.4 | Debounced boundary transitions — a crossing that reverses within the window is ignored |
-| FR-3.5 | Alert when dwell exceeds a per-site (or default) threshold; Alerts feed + acknowledge |
-| SRS §3.1 | Every position and geofence event written durably via a bounded write-behind queue |
-| SRS §2.5 / NFR-3 | Queue-full or DB-down → drop + count, health degraded; the live layer keeps running |
-
-**Operations reporting (FR-4)**
-
-| Req | Delivered |
-|-----|-----------|
-| FR-4.2 | Average dwell time per site, filterable by site and date range |
-| FR-4.3 | Trend indicator vs the immediately preceding period of equal length |
-| FR-4.4 | The report is marked **provisional** with a banner until a data-sufficiency gate is met (min collection days + min recorded site visits — the Appendix B open item, defined in `tessera.reporting.*`) |
-| SRS §5.3 | Reporting served request/response, not real-time |
-
-**Search & trajectory replay (FR-6, FR-5)**
-
-| Req | Delivered |
-|-----|-----------|
-| FR-6.1 | Address autocomplete via Nominatim (SRS §5.2), server-side rate-limited + cached |
-| FR-6.2 | A picked suggestion carries real coordinates → the map flies straight to the point |
-| FR-6.3 | Fuzzy search of known customer site names (PostgreSQL FTS + `pg_trgm` in prod, in-memory trigram otherwise) |
-| FR-5.1 | Ops-manager Replay view: pick a vehicle + a date → its full recorded path drawn on the map (stride-sampled for the browser) |
-| FR-5.2 | Playback: play/pause, scrub slider, 1×/8×/32× speed, a moving marker showing speed |
-
-Phase 5 (Elasticsearch / wide-column storage) is conditional on NFR-4's
-measured-load trigger and is out of scope until then.
-
-## Layout
+## Architecture
 
 ```
-backend/    Spring Boot 3.4 (Java 21). Live layer, ingestion, geofencing, REST + WebSocket.
-            com.tessera.fleet.dataset — trajectory generator + reader.
-frontend/   Vite + React + TypeScript. Operations dashboard (Leaflet + OSM).
-infra/      Dockerfile, helper scripts.
-docs/       Phase notes.
-docker-compose.yml   Redis + Postgres/PostGIS/TimescaleDB + backend.
+Event Producer ──▶ Kafka ──▶ Spark Structured Streaming ──▶ HBase ──▶ Reporting API ──▶ Dashboard
+                                      ▲
+                                      │ loads trained model
+Offline Generator ──▶ Parquet ──▶ Batch RDD Job ──▶ Spark MLlib ──┘
 ```
 
-## Run it
+The live path and the training path are decoupled on purpose: the historical
+archive used for model training is generated offline in bulk rather than by
+archiving the live stream, so a large corpus can be produced in one pass instead
+of waiting for wall-clock time to accumulate.
 
-### With Docker (preferred)
+## Stack
 
-```bash
-cd frontend && npm install && npm run build && cd ..
-docker compose up --build
-```
+| Layer | Technology |
+|---|---|
+| Language, build | Java 17, Maven (multi-module) |
+| Ingest | Apache Kafka 3.7 (KRaft mode) |
+| Processing | Apache Spark 3.5 — Structured Streaming, Core/RDD, SQL, MLlib |
+| Analytical store | Apache HBase 2.5 (wide-column) |
+| Cold storage | Apache Parquet |
+| Reporting | Spring Boot (REST + WebSocket) |
+| Dashboard | React, TypeScript, Leaflet |
+| Orchestration | Docker Compose |
 
-Open <http://localhost:8090>. Sign in with `dispatch` / `dispatch` (or `ops` /
-`ops`). 24 vehicles start driving their rounds immediately; the `demo` profile
-also seeds a few customer sites and back-fills synthetic site-visit history so the
-dwell report renders straight away.
+Java 17 rather than 21: Spark 3.5 officially supports Java 8/11/17, and Java 21
+support only arrived in Spark 4.0.
 
-### Without Docker (local dev)
+## Modules
 
-Terminal 1 — Redis (uses the binary bundled in the test dependency; run
-`mvn -q -f backend/pom.xml test-compile` once first to download it):
-
-```bash
-powershell -ExecutionPolicy Bypass -File infra/scripts/run-local-redis.ps1
-```
-
-Terminal 2 — backend:
-
-```bash
-cd backend && SPRING_PROFILES_ACTIVE=demo mvn spring-boot:run
-```
-
-> Port 8080 in use? Some machines run an Oracle TNS listener there. Start the
-> backend with `PORT=8090 …` and point the frontend at it with
-> `TESSERA_BACKEND=http://localhost:8090`.
-
-Terminal 3 — frontend dev server (proxies to the backend):
-
-```bash
-cd frontend && npm install && npm run dev
-```
-
-Open <http://localhost:5173>. Without the `durable` profile the backend uses an
-in-memory durable store (history lost on restart; the live layer is unaffected).
-
-## Live position feed (SRS §2.6, FR-7)
-
-Two sources ship. Select with `TESSERA_POSITION_SOURCE`.
-
-### `DATASET` (default) — generated, physically validated trajectories
-
-Vehicles replay a pre-generated dataset at 1 Hz. It is **simulated data, disclosed
-as such in-product** — but it is generated to be physically plausible rather than
-merely random, which is what the previous live simulator got wrong:
-
-- Every position is a point on a real **OpenStreetMap road edge**; a vehicle only
-  ever moves onto an adjacent edge of its planned route, so it cannot teleport.
-- Vehicles drive **shortest-path closed rounds** — depot → stops → depot — not a
-  random walk.
-- The speed profile is built from each edge's **real speed limit** plus a corner
-  limit, smoothed by a backward pass so braking is always feasible, then
-  integrated forward under an **acceleration limit**.
-- Vehicles **hold at signalised intersections** and **dwell at customer stops**,
-  which is also what makes the geofence dwell data meaningful.
-- Every vehicle starts and ends parked at its depot, so the track **loops
-  seamlessly**.
-
-The generator refuses to write a dataset that violates those invariants, and
-`FleetDatasetPlausibilityTest` re-checks the committed file on every build. The
-shipped 24-vehicle, 1-hour track measures:
-
-| Check | Value | Limit |
+| Module | Status | Purpose |
 |---|---|---|
-| Largest single-tick displacement | **13.4 m** | 26.3 m |
-| Largest tick-to-tick acceleration | **2.60 m/s²** | 3.6 m/s² |
-| Top speed | **48.3 km/h** | 90 km/h |
-| Ticks with a vehicle in motion | **55.2 %** | ≥ 25 % |
-| Loop-seam discontinuity | **0.000 m** | ≤ 1 m |
+| `common` | ✅ | Road network, geodesy, shared event model |
+| `event-producer` | ✅ | Fleet simulation and Kafka telemetry publishing |
+| `streaming-job` | ✅ | Windowed aggregation, HBase writes, alerting |
+| `batch-job` | planned | RDD feature engineering over the Parquet archive |
+| `ml-training` | planned | MLlib classifier training and evaluation |
+| `reporting-api` | planned | HBase reads for the dashboard |
+| `frontend` | carried over | Leaflet dashboard, to be re-themed for risk |
 
-Regenerate or retune it (after `mvn -f backend/pom.xml compile`):
+## Running it
 
-```bash
-mvn -q -f backend/pom.xml dependency:build-classpath -Dmdep.outputFile=target/cp.txt
-java -cp "backend/target/classes:$(cat backend/target/cp.txt)" \
-  com.tessera.fleet.dataset.FleetDatasetGenerator \
-  --vehicles 24 --ticks 3600 --seed 20260909 \
-  --out backend/src/main/resources/dataset/fleet-round.ndjson.gz
-```
-
-### `GTFS_REALTIME` — a real public transit feed
-
-Genuinely real, continuously-updating positions, defaulting to the **MBTA**'s
-free, no-key feed. Per FR-7.2 it is real data, but it comes from **transit
-vehicles** standing in for a private fleet's telematics (not publicly available)
-— disclosed in-product on the data-source panel.
+Start the infrastructure:
 
 ```bash
-TESSERA_POSITION_SOURCE=GTFS_REALTIME \
-TESSERA_GTFS_URL=https://cdn.mbta.com/realtime/VehiclePositions.pb \
-TESSERA_GTFS_AGENCY="MBTA" \
-TESSERA_OFFLINE_AFTER_SECONDS=120 \
-# optional: TESSERA_GTFS_KEY=... TESSERA_GTFS_KEY_HEADER=x-api-key
+docker compose up -d
 ```
 
-> Raise `TESSERA_OFFLINE_AFTER_SECONDS` for a transit feed — its vehicles report
-> every ~5–30 s and drop in and out, so the 1 Hz default marks many of them
-> offline.
+This brings up Kafka (KRaft mode — no separate ZooKeeper, since HBase already
+embeds one) and HBase standalone, and creates the two topics. Allow roughly
+4–6 GB of container memory.
 
-## Durable layer (SRS §3.1)
-
-By default the durable store is **in-memory**. For real persistence — PostgreSQL
-+ PostGIS + TimescaleDB — run with the `durable` profile against the compose `db`
-service (or any such database):
+Build, then start the producer:
 
 ```bash
-SPRING_PROFILES_ACTIVE=demo,durable \
-DB_URL=jdbc:postgresql://localhost:5432/tessera DB_USER=tessera DB_PASSWORD=tessera \
-mvn -f backend/pom.xml spring-boot:run
+mvn -q install -DskipTests
+java -jar event-producer/target/event-producer-1.0.0.jar
 ```
 
-Flyway creates the schema (`positions` hypertable, `sites` with a GiST index,
-`geofence_events`). `docker compose up` runs the app with this profile.
-
-## Address geocoding (FR-6)
-
-Address autocomplete uses **Nominatim** (SRS §5.2). By default it calls the public
-`nominatim.openstreetmap.org`, which is rate-limited to ~1 req/s — the backend
-throttles and caches accordingly. For production volume, run a self-hosted
-Nominatim and point at it:
+Then the streaming job, which reads the topic, aggregates it and writes to HBase:
 
 ```bash
-NOMINATIM_URL=https://nominatim.internal NOMINATIM_UA="tessera-fleet/1.0 (ops@acme.example)"
+docker compose --profile pipeline up streaming-job
 ```
 
-If geocoding is unavailable the search box says so.
+Configuration is entirely by environment variable — `KAFKA_BOOTSTRAP_SERVERS`,
+`TESSERA_VEHICLE_COUNT`, `TESSERA_TICK_MILLIS`, `TESSERA_WINDOW_MINUTES`,
+`TESSERA_ALERT_SCORE_THRESHOLD`, and the thresholds in `SimulatorConfig` and
+`StreamingConfig`. Nothing is hard-coded.
 
-## Test
+To see what landed in HBase:
 
 ```bash
-cd backend && mvn verify   # 77 unit + 25 integration (embedded Redis + in-memory durable, no Docker)
-                           # + 6 PostGIS/TimescaleDB ITs, auto-skipped when Docker is absent
-cd frontend && npm test    # 24 component/client tests
+docker compose --profile pipeline run --rm --entrypoint java streaming-job -cp /opt/tessera/streaming-job-1.0.0.jar com.tessera.risk.streaming.hbase.HBaseDump vehicle_risk 10
 ```
 
-`FleetDatasetPlausibilityTest` asserts the committed trajectory dataset is
-physically sane (no teleports, bounded acceleration, seamless loop). Integration
-tests never reach a real feed — `AbstractRedisIntegrationTest` points the position
-source at a dead local address so the fleet starts empty.
+`HBaseDump` decodes the binary cell values and takes a table name and a row limit;
+try `segment_metrics` or `driver_profile` too. Because the row keys carry a
+reversed timestamp, an unsorted scan comes back newest-first.
 
-## Road graph
+> Connecting to HBase from the host (an IDE, say) needs `127.0.0.1  hbase` in your
+> hosts file — HBase hands clients a hostname, not an IP.
 
-`backend/src/main/resources/roadgraph/roadgraph.json` is real OSM data (ODbL) for
-a downtown-Boston demo area, built by `infra/scripts/build_roadgraph.py`. It is a
-disclosed data source and labels the map's area. Rebuild or retarget:
+### Running it without knocking HBase over
+
+Standalone HBase runs its master and region server as ordinary JVMs alongside an
+embedded ZooKeeper, and the region server **aborts itself if its ZooKeeper session
+expires**. A long enough GC pause does that, which makes memory pressure look like
+a cluster failure: ZooKeeper, REST and Thrift stay up and listening while the
+master and region server are simply gone.
+
+Three settings exist because of that failure, and are worth leaving alone:
+
+- `TESSERA_MAX_OFFSETS_PER_TRIGGER` (2000) caps how much backlog one micro-batch
+  may take. It is backpressure, not throughput. Left high, the first batch after a
+  restart swallows the whole topic — one run turned a 3-hour backlog into 16,000
+  window rows in a single batch and paused HBase long enough to kill it. Catch-up
+  still runs about eight times faster than the producer emits.
+- The `hbase` health check probes ports rather than running `hbase shell status`.
+  The shell check starts a JVM every 15 seconds and could not finish inside its own
+  timeout while the job was writing, so the service flapped to unhealthy while
+  serving normally.
+- The Spark master is `local[2,4]`, not `local[2]`. In local mode Spark **ignores
+  `spark.task.maxFailures`** and hardcodes it to 1; only the `local[N,F]` form sets
+  a failure budget. Without the `4`, one retryable HBase error — a region being
+  reassigned — fails a task, which fails the batch, which terminates the query.
+
+Allow the WSL 2 VM about 8 GB (`~/.wslconfig`). The job also waits for
+`isTableAvailable` on every table before starting, because a reachable master is
+not yet a writable cluster: after a restart it answers schema questions well before
+the region server has been assigned its regions.
+
+### Java version
+
+The build targets Java 17 and **Spark needs a Java 17 runtime**. Java 24 removed
+the Security Manager outright, and Hadoop 3.3's `UserGroupInformation` still calls
+`Subject.getSubject`, which now throws — so Spark 3.5 cannot start on a JDK newer
+than 23. Compiling on a newer JDK works, because `maven.compiler.release` targets
+17 regardless; only the JVM that *runs* Spark matters.
+
+If your default JDK is 24 or newer, install a 17 alongside it — nothing is
+replaced — and tell Maven where it is:
 
 ```bash
-python infra/scripts/build_roadgraph.py \
-  --bbox <south,west,north,east> --name "<Area>" \
-  --out backend/src/main/resources/roadgraph/roadgraph.json
+winget install EclipseAdoptium.Temurin.17.JDK
 ```
+
+Then add a `jdk` toolchain for version 17 to `~/.m2/toolchains.xml`. The parent POM
+has a profile that activates only on JDK 24+ and selects that toolchain for
+compilation and for the forked test JVMs, so `mvn test` works without changing your
+system default. On a machine already running Java 17 the profile stays dormant and
+none of this applies.
+
+Two related details, both already handled:
+
+- `streaming-job` passes a list of `--add-opens` flags to its test JVM. Spark
+  reaches into JDK internals by reflection — Tungsten's off-heap memory goes
+  through `sun.nio.ch.DirectBuffer` — which the module system has denied by default
+  since Java 16. `spark-submit` adds these itself, so the containerised job needs no
+  equivalent; a JVM that embeds Spark directly does. Without them the first Spark
+  call fails as `Could not initialize class org.apache.spark.storage.StorageUtils$`,
+  which names none of the above.
+- The stack pins `apache/spark:3.5.3-scala2.12-java17-ubuntu`, not the bare `3.5.3`
+  tag. That one defaults to a **Java 11** runtime, which cannot load the records in
+  the shared event model.
+
+## Tests
+
+```bash
+mvn test
+```
+
+The simulator tests are the important ones. They assert that the generated motion
+is physically plausible — no teleports, bounded speed, reported speed consistent
+with actual displacement — and, just as importantly, that risky drivers genuinely
+produce more unsafe behaviour than safe ones. If that correlation did not hold, no
+model downstream could beat a trivial baseline and the pipeline would be measuring
+noise.
+
+The streaming tests run the real aggregations against a static DataFrame, so
+windowing is verified without standing up a broker. Three of them guard failures
+that would otherwise be silent: that the Spark risk-score expression agrees with
+the documented Java formula, that the Spark schema still matches the
+`TelemetryEvent` record (a renamed field yields a column of nulls, not an error),
+and that the score keeps separating the driver tiers.
+
+> Spark's tests need a Java 17 runtime — see **Java version** above. With the
+> toolchain configured, `mvn test` runs all 58 on any JDK.
+
+To inspect the event distribution directly:
+
+```bash
+cd event-producer
+mvn -q dependency:build-classpath -Dmdep.outputFile=target/cp.txt
+java -cp "target/classes;target/test-classes;$(cat target/cp.txt)" \
+  com.tessera.risk.producer.DistributionDiagnostic 3600
+```
+
+## How unsafe behaviour is generated
+
+Risky driving is **emergent, not injected**. Each driver has a risk tier that
+scales only one thing: the chance of starting a *speeding episode*. The route's
+braking profile is computed for the lawful speed limit, so a vehicle travelling
+above it arrives at corners and stops needing to brake harder than the plan
+assumed — and that is the hard brake. Brake hard enough, or brake hard while
+already speeding, and it is an incident.
+
+This matters for the machine learning. Because the precursors and the incidents
+share a single cause, precursor density genuinely predicts incidents — which is
+what makes the prediction task learnable for a real reason rather than being an
+uncorrelated coin flip dressed up as a model.
+
+## What the streaming job computes
+
+Two independent streaming queries read `vehicle.telemetry` and aggregate it into
+five-minute event-time windows sliding every minute:
+
+| Query | Grouped by | Produces |
+|---|---|---|
+| `segment-metrics` | road segment | average speed, distinct vehicles, posted limit, compliance ratio, precursor and incident counts, risk index |
+| `vehicle-risk` | vehicle | hard-brake / violation / incident counts, average and peak speed, mean speed-over-limit ratio, composite risk score |
+
+Both run in **update** mode rather than append. Append emits a window only once
+the watermark has passed its end, so a five-minute window would first reach the
+dashboard about seven minutes after the driving it describes. Update emits each
+window as it fills, and since an HBase `Put` is an upsert keyed by entity and
+window start, the row refines until the window closes.
+
+The risk score is a **rate**, not a count, so windows with different amounts of
+data stay comparable — a vehicle parked for four of five minutes is not made to
+look safe by contributing few readings. Its weights are calibrated against the
+simulator's measured per-tier rates and separate the three driver tiers to roughly
+24 / 42 / 82 out of 100; `RiskScoringTest` asserts that separation, because if it
+collapsed the alert threshold would fire for everyone or for no one and nothing
+would visibly break.
+
+### HBase data model
+
+Three tables. The two time-series tables use a reversed timestamp in the row key —
+`entityId#(Long.MAX_VALUE - windowStart)` — so the newest window for an entity is
+the *first* row in its range, making "latest state" a one-row scan instead of a
+walk through its whole history.
+
+| Table | Row key | Column families |
+|---|---|---|
+| `segment_metrics` | `segmentId#reverseTs` | `cf_traffic`, `cf_risk` |
+| `vehicle_risk` | `vehicleId#reverseTs` | `cf_behavior`, `cf_score` |
+| `driver_profile` | `vehicleId` | `cf_profile` |
+
+Families follow access patterns, not topics: HBase reads only the families a query
+touches, so the map view never pays for the scoring columns and vice versa. The
+time-series tables keep one version per cell — the row key already carries time,
+and a second copy of that dimension would be the one nothing can query by.
+
+Alerts go to `vehicle.alerts` with a per-vehicle cooldown. A vehicle over the
+threshold stays over it for minutes, and an alert every micro-batch for one
+ongoing situation is how alerting gets muted and then ignored.
+
+## Project history
+
+This repository previously held a live vehicle dispatch application. Two tags mark
+the earlier states, both still recoverable:
+
+- `v1-live-dispatch` — dispatch platform on Redis, PostgreSQL/PostGIS, TimescaleDB
+- `v2-real-data-feed` — the same, with a real MBTA GTFS-Realtime feed and a
+  physically validated trajectory generator
+
+Only the road network and the geodesy helpers carry forward into Tessera Risk.

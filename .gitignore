@@ -1,11 +1,11 @@
 # Build output
-backend/target/
+# Any module's target/, not one named module: the build is multi-module now, and
+# streaming-job/target holds a ~76 MB shaded jar.
+target/
 frontend/dist/
-backend/src/main/resources/static/
 
 # Node
 node_modules/
-frontend/node_modules/
 npm-debug.log*
 
 # IDE / OS
@@ -23,8 +23,15 @@ Thumbs.db
 # Logs
 *.log
 
+# Spark local run artefacts. The checkpoint is streaming state, not source: it
+# pins Kafka offsets and window state to one machine's run, so committing it
+# would make another clone resume from offsets it never consumed.
+spark-warehouse/
+checkpoints/
+*/checkpoints/
+derby.log
+metastore_db/
+
 # Editor/agent scratch
 .kilo/
 .localredis/
-backend/app.log
-frontend/vite.log
