@@ -1,7 +1,7 @@
 import type { Vehicle, VehicleStatus } from "../api/types";
 import { STATUS_COLOR, STATUS_LABEL } from "../api/client";
 
-const ORDER: VehicleStatus[] = ["AVAILABLE", "EN_ROUTE", "ON_SITE", "OFFLINE"];
+const ORDER: VehicleStatus[] = ["ACTIVE", "ON_SITE", "OFFLINE"];
 
 interface Props {
   active: Set<VehicleStatus>;

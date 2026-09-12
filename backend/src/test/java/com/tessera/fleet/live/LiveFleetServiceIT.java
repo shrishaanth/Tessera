@@ -20,7 +20,6 @@ import com.tessera.fleet.support.AbstractRedisIntegrationTest;
 
 @SpringBootTest
 @TestPropertySource(properties = {
-        "tessera.simulator.vehicle-count=0",
         "tessera.ingest-poll-millis=3600000",
         "tessera.broadcast-millis=3600000",
         "tessera.offline-after-seconds=1"
@@ -46,7 +45,7 @@ class LiveFleetServiceIT extends AbstractRedisIntegrationTest {
 
         List<Vehicle> all = liveFleet.allVehicles();
         assertThat(all).extracting(Vehicle::vehicleId).containsExactly("IT-1", "IT-2");
-        assertThat(liveFleet.getVehicle("IT-1").status()).isEqualTo(VehicleStatus.AVAILABLE);
+        assertThat(liveFleet.getVehicle("IT-1").status()).isEqualTo(VehicleStatus.ACTIVE);
         assertThat(liveFleet.getVehicle("IT-1").driverName()).isEqualTo("IT-1 driver");
     }
 
@@ -64,17 +63,17 @@ class LiveFleetServiceIT extends AbstractRedisIntegrationTest {
     }
 
     @Test
-    void assigningAJobFlipsStatusToEnRouteAndRecordsHistory() {
+    void enteringASiteFlipsStatusToOnSiteAndRecordsHistory() {
         liveFleet.applyReport(report("IT-9", 42.36, -71.06));
-        assertThat(liveFleet.getVehicle("IT-9").status()).isEqualTo(VehicleStatus.AVAILABLE);
+        assertThat(liveFleet.getVehicle("IT-9").status()).isEqualTo(VehicleStatus.ACTIVE);
 
-        liveFleet.setCurrentJob("IT-9", "JOB-1");
+        liveFleet.setOnSite("IT-9", "SITE-1");
 
-        assertThat(liveFleet.getVehicle("IT-9").status()).isEqualTo(VehicleStatus.EN_ROUTE);
-        assertThat(liveFleet.getVehicle("IT-9").currentJobId()).isEqualTo("JOB-1");
+        assertThat(liveFleet.getVehicle("IT-9").status()).isEqualTo(VehicleStatus.ON_SITE);
+        assertThat(liveFleet.getVehicle("IT-9").onSiteId()).isEqualTo("SITE-1");
         assertThat(liveFleet.statusHistory("IT-9"))
                 .extracting(StatusChange::status)
-                .containsExactly(VehicleStatus.AVAILABLE, VehicleStatus.EN_ROUTE);
+                .containsExactly(VehicleStatus.ACTIVE, VehicleStatus.ON_SITE);
     }
 
     @Test
@@ -87,6 +86,6 @@ class LiveFleetServiceIT extends AbstractRedisIntegrationTest {
         });
         assertThat(liveFleet.statusHistory("IT-OLD"))
                 .extracting(StatusChange::status)
-                .containsExactly(VehicleStatus.AVAILABLE, VehicleStatus.OFFLINE);
+                .containsExactly(VehicleStatus.ACTIVE, VehicleStatus.OFFLINE);
     }
 }

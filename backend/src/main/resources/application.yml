@@ -50,37 +50,37 @@ logging:
 # ---------------------------------------------------------------------------
 tessera:
   # A vehicle silent for longer than this resolves to OFFLINE on the map (FR-1.1).
-  offline-after-seconds: 30
+  # Sized for the 1 Hz dataset feed; raise it to ~120 for GTFS_REALTIME, whose
+  # vehicles report every ~5–30 s and drop in and out of the feed.
+  offline-after-seconds: ${TESSERA_OFFLINE_AFTER_SECONDS:30}
   # Ingestion pull cadence and live-map push cadence. Both well under the
   # 2-second UI-freshness bound (FR-1.2 / NFR-2).
   ingest-poll-millis: 1000
   broadcast-millis: 1000
 
-  # Which live position feed to run.
-  #   SIMULATOR      — deterministic built-in simulator (default; used by tests)
-  #   GTFS_REALTIME  — a real public GTFS-Realtime VehiclePositions feed
-  position-source: ${TESSERA_POSITION_SOURCE:SIMULATOR}
+  # Which live position feed to run (SRS §2.6, FR-7).
+  #   DATASET        — replay the pre-generated trajectory dataset (default).
+  #                    Simulated, but generated against the real OSM road network
+  #                    under real speed limits and physical accel/braking limits,
+  #                    so vehicles drive continuously and never jump.
+  #   GTFS_REALTIME  — a real public transit agency feed (see `gtfs` below).
+  position-source: ${TESSERA_POSITION_SOURCE:DATASET}
 
-  simulator:
-    vehicle-count: ${TESSERA_SIM_VEHICLES:40}
-    tick-millis: 1000
-    seed: 42
-    available-ratio: 0.7
+  dataset:
+    resource: ${TESSERA_DATASET:classpath:dataset/fleet-round.ndjson.gz}
 
+  # Used when position-source=GTFS_REALTIME. Defaults to the MBTA's free, no-key
+  # feed, which covers the same downtown-Boston area as the bundled road graph.
   gtfs:
-    feed-url: ${TESSERA_GTFS_URL:}
+    feed-url: ${TESSERA_GTFS_URL:https://cdn.mbta.com/realtime/VehiclePositions.pb}
     api-key: ${TESSERA_GTFS_KEY:}
     api-key-header: ${TESSERA_GTFS_KEY_HEADER:}
-    poll-millis: 15000
-    agency-label: ${TESSERA_GTFS_AGENCY:}
+    poll-millis: ${TESSERA_GTFS_POLL_MILLIS:10000}
+    agency-label: ${TESSERA_GTFS_AGENCY:MBTA}
 
-  # OSM-derived routing graph for travel-time-aware ranking (FR-2.2).
+  # Real OSM road network for the area — shown in the data-source panel (FR-7)
+  # and used to label the map area.
   road-graph-resource: classpath:roadgraph/roadgraph.json
-
-  nearest:
-    prefilter-radius-meters: 2500
-    max-radius-meters: 12000
-    shortlist-size: 5
 
   # Geofencing & dwell-time tracking (FR-3).
   geofence:
@@ -107,13 +107,11 @@ tessera:
     max-points: 3000
 
   # Historical reporting (FR-4). `min-*` are the explicit answer to SRS Appendix B:
-  # reports are not presented as reliable until this much history and this many
-  # samples exist (FR-4.4).
+  # the average-dwell figures are not presented as reliable until this much
+  # history and this many recorded site visits exist (FR-4.4).
   reporting:
     min-collection-days: 14
-    min-completed-jobs: 50
     min-site-exits: 20
-    on-time-grace-seconds: 300
     synthetic-history: false
 
   # Durable layer write-behind (SRS §3.1). The queue is bounded; when it is full
@@ -146,8 +144,6 @@ spring:
     activate:
       on-profile: demo
 tessera:
-  simulator:
-    vehicle-count: 40
   # Tighter thresholds so geofence enters/exits and dwell alerts are visible
   # within a short demo session rather than a real shift.
   geofence:
@@ -155,8 +151,8 @@ tessera:
     # Low so a slow pass through a demo site trips a dwell alert within a
     # short session; a real deployment uses minutes (see the default above).
     default-dwell-alert-seconds: 25
-  # The demo back-fills weeks of synthetic history so the reporting dashboard
-  # renders — flagged so the UI says the figures are demo data (FR-4.4 honesty).
+  # The demo back-fills synthetic site-visit history so the dwell report renders
+  # — flagged so the UI says the figures are demo data (FR-4.4 honesty).
   reporting:
     synthetic-history: true
 

@@ -38,7 +38,7 @@ public class DataSourceService {
                 positionSource.isSubstitute()
                         ? "Not production fleet telematics"
                         : "Customer fleet telematics",
-                "Live vehicle positions for the dispatcher map and nearest-vehicle search",
+                "Live vehicle positions for the fleet map and geofencing",
                 positionSource.isSubstitute() ? Role.SUBSTITUTE : Role.PRODUCTION,
                 positionSource.isSubstitute() ? positionSource.disclosure() : "",
                 true));
@@ -47,7 +47,7 @@ public class DataSourceService {
                 "osm-road-network",
                 "OpenStreetMap road network — " + travelTime.graph().areaName(),
                 "OpenStreetMap contributors, via the Overpass API (ODbL)",
-                "Real road-network travel-time ranking for nearest-available-vehicle assignment",
+                "Real road data for the demo area — labels the map and is disclosed here",
                 Role.PRODUCTION,
                 "Real, community-maintained road data. Free; no API key or billing "
                         + "account required.",
@@ -69,7 +69,7 @@ public class DataSourceService {
                 "nominatim",
                 "Nominatim geocoding" + (selfHosted ? " (self-hosted)" : ""),
                 selfHosted ? "Self-hosted OpenStreetMap Nominatim" : "OpenStreetMap Nominatim (public)",
-                "Address autocomplete and geocoding for new-job entry",
+                "Address search and customer-site geocoding",
                 Role.PRODUCTION,
                 selfHosted
                         ? "Self-hosted geocoder over OpenStreetMap data. No usage limit."

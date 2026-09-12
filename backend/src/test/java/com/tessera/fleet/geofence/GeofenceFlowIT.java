@@ -114,6 +114,6 @@ class GeofenceFlowIT extends AbstractRedisIntegrationTest {
 
         assertThat(writeBehind.awaitDrained(2000)).isTrue();
         assertThat(durableStore.recentGeofenceEvents(v, null, 10)).isEmpty();
-        assertThat(liveFleet.getVehicle(v).status()).isEqualTo(VehicleStatus.AVAILABLE);
+        assertThat(liveFleet.getVehicle(v).status()).isEqualTo(VehicleStatus.ACTIVE);
     }
 }

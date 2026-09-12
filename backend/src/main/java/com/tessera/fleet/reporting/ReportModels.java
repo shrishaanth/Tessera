@@ -20,24 +20,6 @@ public final class ReportModels {
         }
     }
 
-    public record WeekPoint(long weekStartEpochMs, int completed, int onTime, Double onTimePct) { }
-
-    /**
-     * @param onTimePct  {@code null} when no completed jobs matched
-     * @param byWeek     weekly breakdown ("On-time % by week")
-     * @param trend      vs the immediately preceding period of equal length
-     * @param provisional true until the data-sufficiency gate is met (FR-4.4)
-     */
-    public record OnTimeReport(
-            Long fromEpochMs,
-            Long toEpochMs,
-            int completed,
-            int onTime,
-            Double onTimePct,
-            List<WeekPoint> byWeek,
-            Trend trend,
-            boolean provisional) { }
-
     public record SiteDwell(
             String siteId,
             String siteName,
@@ -45,6 +27,13 @@ public final class ReportModels {
             Double avgDwellSeconds,
             boolean enoughData) { }
 
+    /**
+     * Average dwell time per site (FR-4.2).
+     *
+     * @param overallAvgDwellSeconds {@code null} when no visits matched
+     * @param trend                  vs the immediately preceding period of equal length (FR-4.3)
+     * @param provisional            true until the data-sufficiency gate is met (FR-4.4)
+     */
     public record DwellReport(
             Long fromEpochMs,
             Long toEpochMs,
@@ -65,15 +54,12 @@ public final class ReportModels {
             boolean ready,
             long collectionDays,
             int minCollectionDays,
-            long completedJobs,
-            int minCompletedJobs,
             long siteExits,
             int minSiteExits,
             List<String> reasons,
             boolean syntheticHistory) { }
 
-    public record FilterOptions(List<String> routes, List<String> drivers,
-                                List<SiteOption> sites) {
+    public record FilterOptions(List<SiteOption> sites) {
         public record SiteOption(String id, String name) { }
     }
 }

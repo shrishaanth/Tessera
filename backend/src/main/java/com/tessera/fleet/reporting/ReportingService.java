@@ -1,37 +1,33 @@
 package com.tessera.fleet.reporting;
 
-import java.time.DayOfWeek;
 import java.time.Instant;
-import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
-import java.time.temporal.TemporalAdjusters;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.TreeMap;
 
 import org.springframework.stereotype.Service;
 
 import com.tessera.fleet.durable.DurableStore;
 import com.tessera.fleet.geofence.GeofenceService;
-import com.tessera.fleet.reporting.ReportingFacts.CompletedJobFact;
 import com.tessera.fleet.reporting.ReportingFacts.DataWindow;
 import com.tessera.fleet.reporting.ReportingFacts.SiteVisitFact;
 import com.tessera.fleet.reporting.ReportModels.DwellReport;
 import com.tessera.fleet.reporting.ReportModels.FilterOptions;
-import com.tessera.fleet.reporting.ReportModels.OnTimeReport;
 import com.tessera.fleet.reporting.ReportModels.Readiness;
 import com.tessera.fleet.reporting.ReportModels.SiteDwell;
 import com.tessera.fleet.reporting.ReportModels.Trend;
-import com.tessera.fleet.reporting.ReportModels.WeekPoint;
 
 /**
  * Historical performance reporting (FR-4). Reads bounded fact lists from the
  * {@link DurableStore} and does the grouping, averaging and period-over-period
  * trend maths here (NFR-4 — no extra infrastructure until real load demands it).
  * Served request/response, not real-time (SRS §5.3).
+ *
+ * <p>With the dispatch feature removed the one report is average dwell time per
+ * customer site (FR-4.2), computed from geofence EXIT events.
  */
 @Service
 public class ReportingService {
@@ -45,64 +41,6 @@ public class ReportingService {
         this.durableStore = durableStore;
         this.geofenceService = geofenceService;
         this.properties = properties;
-    }
-
-    // ---------------------------------------------------------------- FR-4.1
-
-    public OnTimeReport onTime(ReportFilter filter) {
-        long now = System.currentTimeMillis();
-        long to = filter.to(now);
-        long from = filter.from(to - 30L * 86_400_000L); // default: trailing 30 days
-        long span = Math.max(1, to - from);
-
-        List<CompletedJobFact> current = filteredCompleted(from, to, filter);
-        List<CompletedJobFact> previous = filteredCompleted(from - span, from, filter);
-
-        Double currentPct = onTimePct(current);
-        Double previousPct = onTimePct(previous);
-
-        int onTime = (int) current.stream().filter(j -> j.onTime(properties.onTimeGraceMillis())).count();
-
-        return new OnTimeReport(from, to, current.size(), onTime, currentPct,
-                weekly(current), Trend.of(currentPct, previousPct), !readiness().ready());
-    }
-
-    private List<CompletedJobFact> filteredCompleted(long from, long to, ReportFilter f) {
-        return durableStore.completedJobs(from, to).stream()
-                .filter(j -> f.route() == null || f.route().equals(j.route()))
-                .filter(j -> f.driverName() == null || f.driverName().equals(j.driverName()))
-                .filter(j -> f.siteId() == null || f.siteId().equals(j.siteId()))
-                .toList();
-    }
-
-    private Double onTimePct(List<CompletedJobFact> jobs) {
-        if (jobs.isEmpty()) {
-            return null;
-        }
-        long onTime = jobs.stream().filter(j -> j.onTime(properties.onTimeGraceMillis())).count();
-        return round1(100.0 * onTime / jobs.size());
-    }
-
-    private List<WeekPoint> weekly(List<CompletedJobFact> jobs) {
-        Map<Long, int[]> byWeek = new TreeMap<>(); // weekStartMs -> [completed, onTime]
-        for (CompletedJobFact j : jobs) {
-            long weekStart = weekStartMs(j.completedAtEpochMs());
-            int[] acc = byWeek.computeIfAbsent(weekStart, k -> new int[2]);
-            acc[0]++;
-            if (j.onTime(properties.onTimeGraceMillis())) {
-                acc[1]++;
-            }
-        }
-        List<WeekPoint> out = new ArrayList<>();
-        byWeek.forEach((weekStart, acc) -> out.add(new WeekPoint(weekStart, acc[0], acc[1],
-                acc[0] == 0 ? null : round1(100.0 * acc[1] / acc[0]))));
-        return out;
-    }
-
-    private static long weekStartMs(long epochMs) {
-        return Instant.ofEpochMilli(epochMs).atZone(ZoneOffset.UTC).toLocalDate()
-                .with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
-                .atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli();
     }
 
     // ---------------------------------------------------------------- FR-4.2
@@ -165,13 +103,12 @@ public class ReportingService {
             reasons.add("Only " + collectionDays + " of " + properties.minCollectionDays()
                     + " days of history collected");
         }
-        if (w.completedJobs() < properties.minCompletedJobs()) {
-            reasons.add("Only " + w.completedJobs() + " of " + properties.minCompletedJobs()
-                    + " completed jobs on record");
+        if (w.siteExits() < properties.minSiteExits()) {
+            reasons.add("Only " + w.siteExits() + " of " + properties.minSiteExits()
+                    + " recorded site visits");
         }
         boolean ready = reasons.isEmpty();
         return new Readiness(ready, collectionDays, properties.minCollectionDays(),
-                w.completedJobs(), properties.minCompletedJobs(),
                 w.siteExits(), properties.minSiteExits(), reasons,
                 properties.syntheticHistory());
     }
@@ -179,15 +116,9 @@ public class ReportingService {
     // ---------------------------------------------------------------- filters
 
     public FilterOptions filterOptions() {
-        long now = System.currentTimeMillis();
-        List<CompletedJobFact> all = durableStore.completedJobs(0, now);
-        List<String> routes = all.stream().map(CompletedJobFact::route)
-                .filter(r -> r != null && !r.isBlank()).distinct().sorted().toList();
-        List<String> drivers = all.stream().map(CompletedJobFact::driverName)
-                .filter(d -> d != null && !d.isBlank()).distinct().sorted().toList();
         List<FilterOptions.SiteOption> sites = geofenceService.sites().stream()
                 .map(s -> new FilterOptions.SiteOption(s.id(), s.name())).toList();
-        return new FilterOptions(routes, drivers, sites);
+        return new FilterOptions(sites);
     }
 
     private static Double round1(double v) {

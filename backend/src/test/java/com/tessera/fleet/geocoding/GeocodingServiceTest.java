@@ -37,9 +37,9 @@ class GeocodingServiceTest {
     private GeocodingService service(UrlFetcher fetcher, long minIntervalMs) {
         FleetProperties base = TestFixtures.fleetProperties();
         FleetProperties props = new FleetProperties(base.offlineAfterSeconds(),
-                base.ingestPollMillis(), base.broadcastMillis(), base.nearest(),
-                base.positionSource(), base.simulator(), base.gtfs(), base.roadGraphResource(),
-                base.geofence(), base.durable(), cfg(minIntervalMs), base.replay(), base.users());
+                base.ingestPollMillis(), base.broadcastMillis(), base.positionSource(),
+                base.dataset(), base.gtfs(), base.roadGraphResource(), base.geofence(), base.durable(),
+                cfg(minIntervalMs), base.replay(), base.users());
         return new GeocodingService(fetcher, new ObjectMapper(), props);
     }
 

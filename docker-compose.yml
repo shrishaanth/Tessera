@@ -45,8 +45,8 @@ services:
       DB_URL: jdbc:postgresql://db:5432/tessera
       DB_USER: tessera
       DB_PASSWORD: tessera
-      TESSERA_POSITION_SOURCE: SIMULATOR
-      TESSERA_SIM_VEHICLES: "40"
+      # Live feed defaults to the MBTA's public GTFS-Realtime feed; override with
+      # TESSERA_GTFS_URL / TESSERA_GTFS_AGENCY for another agency.
     ports:
       - "8090:8080"
 

@@ -5,21 +5,21 @@ import java.util.List;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
- * All Phase 1 tunables, bound from the {@code tessera.*} configuration tree.
+ * All runtime tunables, bound from the {@code tessera.*} configuration tree.
  *
  * @param offlineAfterSeconds a vehicle with no position report for longer than
  *        this is resolved as {@code OFFLINE} (drives FR-1.1 colour coding).
- * @param ingestPollMillis    how often the ingestion loop pulls the active source.
- * @param broadcastMillis     how often a fleet snapshot is pushed to dispatcher
- *        clients over WebSocket (must keep FR-1.2 / NFR-2 under 2 s end to end).
- * @param nearest             nearest-available-vehicle search tuning (FR-2).
+ * @param ingestPollMillis    how often the ingestion loop pulls the feed.
+ * @param broadcastMillis     how often a fleet snapshot is pushed to clients over
+ *        WebSocket (must keep FR-1.2 / NFR-2 under 2 s end to end).
  * @param positionSource      which live position feed to run (SRS §2.6, FR-7).
- * @param simulator           deterministic simulator settings.
- * @param gtfs                real GTFS-Realtime feed settings.
- * @param roadGraphResource   classpath location of the OSM-derived routing graph.
+ * @param dataset             pre-generated trajectory dataset settings.
+ * @param gtfs                real GTFS-Realtime feed settings (SRS §2.6, FR-7).
+ * @param roadGraphResource   classpath location of the OSM-derived road graph
+ *        (a real data source shown in the transparency panel, FR-7).
  * @param geofence            geofencing &amp; dwell-time tuning (FR-3).
  * @param durable             durable-layer write-behind settings (SRS §3.1).
- * @param geocoding           address autocomplete / geocoding via Nominatim (FR-6).
+ * @param geocoding           address / site geocoding via Nominatim (FR-6).
  * @param replay              trajectory-replay tuning (FR-5).
  * @param users               accounts permitted to sign in (NFR-7).
  */
@@ -28,9 +28,8 @@ public record FleetProperties(
         int offlineAfterSeconds,
         long ingestPollMillis,
         long broadcastMillis,
-        Nearest nearest,
         PositionSourceType positionSource,
-        Simulator simulator,
+        Dataset dataset,
         Gtfs gtfs,
         String roadGraphResource,
         Geofence geofence,
@@ -39,25 +38,22 @@ public record FleetProperties(
         Replay replay,
         List<User> users) {
 
-    public enum PositionSourceType { SIMULATOR, GTFS_REALTIME }
+    /**
+     * Which live position feed to run.
+     *
+     * <ul>
+     *   <li>{@code DATASET} — replay a pre-generated, physically plausible
+     *       trajectory dataset (default; also what the tests use).</li>
+     *   <li>{@code GTFS_REALTIME} — a real public transit agency feed.</li>
+     * </ul>
+     */
+    public enum PositionSourceType { DATASET, GTFS_REALTIME }
 
     /**
-     * @param prefilterRadiusMeters straight-line GEOSEARCH radius used to pick
-     *        candidate vehicles before road-network ranking.
-     * @param maxRadiusMeters       ceiling the radius may grow to when too few
-     *        candidates are found.
-     * @param shortlistSize         how many ranked vehicles to return (FR-2.3).
+     * @param resource classpath/file location of the gzipped NDJSON trajectory
+     *        dataset produced by {@code FleetDatasetGenerator}
      */
-    public record Nearest(int prefilterRadiusMeters, int maxRadiusMeters, int shortlistSize) { }
-
-    /**
-     * @param vehicleCount   how many simulated vehicles to spawn (SRS sizes the
-     *        system for 20–200 vehicles).
-     * @param tickMillis     wall-clock interval between simulated position reports.
-     * @param seed           RNG seed — fixed for deterministic, reproducible runs.
-     * @param availableRatio fraction of the fleet that starts {@code AVAILABLE}.
-     */
-    public record Simulator(int vehicleCount, long tickMillis, long seed, double availableRatio) { }
+    public record Dataset(String resource) { }
 
     /**
      * @param feedUrl       URL of a real public GTFS-Realtime {@code VehiclePositions} feed.
@@ -98,7 +94,7 @@ public record FleetProperties(
     public record DataSource(String url, String username, String password) { }
 
     /**
-     * Address autocomplete / geocoding via Nominatim (SRS §5.2 — free, public,
+     * Address / site geocoding via Nominatim (SRS §5.2 — free, public,
      * rate-limited). Point {@code baseUrl} at a self-hosted instance to lift the
      * rate limit.
      *

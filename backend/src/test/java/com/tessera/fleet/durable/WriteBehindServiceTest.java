@@ -21,8 +21,8 @@ class WriteBehindServiceTest {
     private static FleetProperties propsWith(int capacity, int batch, long flush) {
         FleetProperties base = TestFixtures.fleetProperties();
         return new FleetProperties(base.offlineAfterSeconds(), base.ingestPollMillis(),
-                base.broadcastMillis(), base.nearest(), base.positionSource(), base.simulator(),
-                base.gtfs(), base.roadGraphResource(), base.geofence(),
+                base.broadcastMillis(), base.positionSource(), base.dataset(), base.gtfs(),
+                base.roadGraphResource(), base.geofence(),
                 new FleetProperties.Durable("in-memory", capacity, batch, flush,
                         base.durable().datasource()),
                 base.geocoding(), base.replay(), base.users());

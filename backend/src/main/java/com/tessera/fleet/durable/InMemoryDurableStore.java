@@ -9,7 +9,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
 
-import com.tessera.fleet.reporting.ReportingFacts.CompletedJobFact;
 import com.tessera.fleet.reporting.ReportingFacts.DataWindow;
 import com.tessera.fleet.reporting.ReportingFacts.SiteVisitFact;
 
@@ -17,7 +16,7 @@ import com.tessera.fleet.reporting.ReportingFacts.SiteVisitFact;
  * In-memory {@link DurableStore}. The default when the {@code durable} profile is
  * off, and the store used by the fast (no-Docker) integration tests. Position
  * history is bounded so a long-running dev session does not exhaust the heap;
- * geofence events, sites and jobs are kept in full.
+ * geofence events and sites are kept in full.
  */
 public class InMemoryDurableStore implements DurableStore {
 
@@ -26,7 +25,6 @@ public class InMemoryDurableStore implements DurableStore {
     private final CopyOnWriteArrayList<PositionRecord> positions = new CopyOnWriteArrayList<>();
     private final CopyOnWriteArrayList<GeofenceEventRecord> geofenceEvents = new CopyOnWriteArrayList<>();
     private final Map<String, SiteRecord> sites = new ConcurrentHashMap<>();
-    private final Map<String, JobRecord> jobs = new ConcurrentHashMap<>();
     private final AtomicLong positionsWritten = new AtomicLong();
 
     @Override
@@ -74,16 +72,6 @@ public class InMemoryDurableStore implements DurableStore {
     }
 
     @Override
-    public void saveJob(JobRecord job) {
-        jobs.put(job.jobId(), job);
-    }
-
-    @Override
-    public List<JobRecord> loadJobs() {
-        return new ArrayList<>(jobs.values());
-    }
-
-    @Override
     public List<GeofenceEventRecord> recentGeofenceEvents(String vehicleId, String siteId, int limit) {
         return geofenceEvents.stream()
                 .filter(e -> vehicleId == null || vehicleId.equals(e.vehicleId()))
@@ -101,24 +89,6 @@ public class InMemoryDurableStore implements DurableStore {
     @Override
     public long positionCount() {
         return positionsWritten.get();
-    }
-
-    @Override
-    public List<CompletedJobFact> completedJobs(long fromMs, long toMs) {
-        List<CompletedJobFact> out = new ArrayList<>();
-        for (JobRecord j : jobs.values()) {
-            if (!"COMPLETED".equals(j.status()) || j.completedAtEpochMs() == null) {
-                continue;
-            }
-            long c = j.completedAtEpochMs();
-            if (c < fromMs || c >= toMs) {
-                continue;
-            }
-            out.add(new CompletedJobFact(j.jobId(), j.route(), j.driverName(), j.siteId(),
-                    j.expectedArrivalEpochMs() == null ? 0 : j.expectedArrivalEpochMs(),
-                    j.actualArrivalEpochMs() == null ? 0 : j.actualArrivalEpochMs(), c));
-        }
-        return out;
     }
 
     @Override
@@ -153,27 +123,15 @@ public class InMemoryDurableStore implements DurableStore {
             earliest = Math.min(earliest, p.epochMillis());
             latest = Math.max(latest, p.epochMillis());
         }
+        long exits = 0;
         for (GeofenceEventRecord e : geofenceEvents) {
             earliest = Math.min(earliest, e.epochMillis());
             latest = Math.max(latest, e.epochMillis());
-        }
-        long completed = 0;
-        long exits = 0;
-        for (JobRecord j : jobs.values()) {
-            if ("COMPLETED".equals(j.status())) {
-                completed++;
-                if (j.completedAtEpochMs() != null) {
-                    earliest = Math.min(earliest, j.completedAtEpochMs());
-                    latest = Math.max(latest, j.completedAtEpochMs());
-                }
-            }
-        }
-        for (GeofenceEventRecord e : geofenceEvents) {
             if (e.type() == GeofenceEventRecord.Type.EXIT) {
                 exits++;
             }
         }
-        return new DataWindow(earliest == Long.MAX_VALUE ? 0 : earliest, latest, completed, exits);
+        return new DataWindow(earliest == Long.MAX_VALUE ? 0 : earliest, latest, exits);
     }
 
     @Override
@@ -186,7 +144,6 @@ public class InMemoryDurableStore implements DurableStore {
         positions.clear();
         geofenceEvents.clear();
         sites.clear();
-        jobs.clear();
         positionsWritten.set(0);
     }
 }

@@ -14,6 +14,7 @@ import com.tessera.fleet.routing.RoadGraphLoader;
 public final class TestFixtures {
 
     public static final String ROAD_GRAPH_RESOURCE = "classpath:roadgraph/roadgraph.json";
+    public static final String DATASET_RESOURCE = "classpath:dataset/fleet-round.ndjson.gz";
 
     private TestFixtures() { }
 
@@ -22,10 +23,10 @@ public final class TestFixtures {
                 30,
                 1000L,
                 1000L,
-                new FleetProperties.Nearest(2500, 12000, 5),
-                FleetProperties.PositionSourceType.SIMULATOR,
-                new FleetProperties.Simulator(20, 1000L, 42L, 0.7),
-                new FleetProperties.Gtfs(null, null, null, 15000L, null),
+                FleetProperties.PositionSourceType.DATASET,
+                new FleetProperties.Dataset(DATASET_RESOURCE),
+                new FleetProperties.Gtfs("https://example.test/VehiclePositions.pb",
+                        null, null, 10000L, "Test Agency"),
                 ROAD_GRAPH_RESOURCE,
                 new FleetProperties.Geofence(20, 1800),
                 new FleetProperties.Durable("in-memory", 50000, 500, 1000L,

@@ -3,7 +3,6 @@ package com.tessera.fleet.durable;
 import java.util.List;
 import java.util.Optional;
 
-import com.tessera.fleet.reporting.ReportingFacts.CompletedJobFact;
 import com.tessera.fleet.reporting.ReportingFacts.DataWindow;
 import com.tessera.fleet.reporting.ReportingFacts.SiteVisitFact;
 
@@ -38,12 +37,6 @@ public interface DurableStore {
     /** Fuzzy search of customer site names/addresses, best match first (FR-6.3). */
     List<SiteRecord> searchSites(String query, int limit);
 
-    // ---- jobs: write-through from the live JobService
-
-    void saveJob(JobRecord job);
-
-    List<JobRecord> loadJobs();
-
     // ---- history reads (Phase 2 needs simple lists; Phase 3 builds aggregates)
 
     List<GeofenceEventRecord> recentGeofenceEvents(String vehicleId, String siteId, int limit);
@@ -54,9 +47,6 @@ public interface DurableStore {
 
     // ---- reporting reads (FR-4). Row counts are bounded for a 20–200 vehicle
     //      fleet; the reporting layer does the grouping and trend maths.
-
-    /** Completed jobs whose completion time falls in {@code [fromMs, toMs)}. */
-    List<CompletedJobFact> completedJobs(long fromMs, long toMs);
 
     /** Geofence EXIT events (one per site visit) in {@code [fromMs, toMs)}. */
     List<SiteVisitFact> siteVisits(long fromMs, long toMs);

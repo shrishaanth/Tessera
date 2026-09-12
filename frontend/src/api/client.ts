@@ -1,14 +1,10 @@
 import type {
   Alert,
-  CreateJobResponse,
   DataSourceInfo,
   DwellReport,
   GeocodeResponse,
   GeofenceEventRecord,
   Identity,
-  Job,
-  NearestVehicle,
-  OnTimeReport,
   Readiness,
   ReplayVehicle,
   ReportFilterOptions,
@@ -23,8 +19,6 @@ import type {
 export interface ReportQuery {
   from?: number;
   to?: number;
-  route?: string;
-  driver?: string;
   siteId?: string;
 }
 
@@ -74,21 +68,6 @@ export const api = {
 
   vehicleDetail: (id: string) => req<VehicleDetail>(`/api/vehicles/${encodeURIComponent(id)}`),
 
-  nearest: (lat: number, lon: number, limit = 5) =>
-    req<NearestVehicle[]>(`/api/vehicles/nearest?lat=${lat}&lon=${lon}&limit=${limit}`),
-
-  createJob: (destLatitude: number, destLongitude: number, destinationAddress?: string) =>
-    req<CreateJobResponse>("/api/jobs", {
-      method: "POST",
-      body: JSON.stringify({ destLatitude, destLongitude, destinationAddress: destinationAddress ?? null }),
-    }),
-
-  assignJob: (jobId: string, vehicleId: string) =>
-    req<Job>(`/api/jobs/${encodeURIComponent(jobId)}/assign`, {
-      method: "POST",
-      body: JSON.stringify({ vehicleId }),
-    }),
-
   dataSources: () => req<DataSourceInfo[]>("/api/data-sources"),
 
   sites: () => req<SiteView[]>("/api/sites"),
@@ -117,9 +96,6 @@ export const api = {
 
   reportFilters: () => req<ReportFilterOptions>("/api/reports/filters"),
 
-  onTimeReport: (q: ReportQuery = {}) =>
-    req<OnTimeReport>(`/api/reports/on-time${reportQs(q)}`),
-
   dwellReport: (q: ReportQuery = {}) => req<DwellReport>(`/api/reports/dwell${reportQs(q)}`),
 
   geocode: (q: string, limit = 6) =>
@@ -143,23 +119,19 @@ function reportQs(q: ReportQuery): string {
   const p = new URLSearchParams();
   if (q.from) p.set("from", String(q.from));
   if (q.to) p.set("to", String(q.to));
-  if (q.route) p.set("route", q.route);
-  if (q.driver) p.set("driver", q.driver);
   if (q.siteId) p.set("siteId", q.siteId);
   const s = p.toString();
   return s ? `?${s}` : "";
 }
 
 export const STATUS_COLOR: Record<VehicleStatus, string> = {
-  AVAILABLE: "#1d9e75",
-  EN_ROUTE: "#2f5fda",
+  ACTIVE: "#1d9e75",
   ON_SITE: "#c98a1f",
   OFFLINE: "#b0b5bb",
 };
 
 export const STATUS_LABEL: Record<VehicleStatus, string> = {
-  AVAILABLE: "Available",
-  EN_ROUTE: "En route",
+  ACTIVE: "Active",
   ON_SITE: "On site",
   OFFLINE: "Offline",
 };

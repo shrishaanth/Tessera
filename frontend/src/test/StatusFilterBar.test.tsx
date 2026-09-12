@@ -13,26 +13,36 @@ const v = (id: string, status: VehicleStatus): Vehicle => ({
   headingDeg: 0,
   speedKph: 10,
   lastReportEpochMs: Date.now(),
-  currentJobId: null,
 });
 
 describe("StatusFilterBar", () => {
-  const vehicles = [v("1", "AVAILABLE"), v("2", "AVAILABLE"), v("3", "EN_ROUTE"), v("4", "OFFLINE")];
+  const vehicles = [v("1", "ACTIVE"), v("2", "ACTIVE"), v("3", "ON_SITE"), v("4", "OFFLINE")];
 
   it("shows a chip per status with counts", () => {
-    render(<StatusFilterBar active={new Set(["AVAILABLE", "EN_ROUTE", "ON_SITE", "OFFLINE"])} onToggle={() => {}} vehicles={vehicles} />);
-    expect(screen.getByRole("button", { name: /Available 2/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /En route 1/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /On site 0/ })).toBeInTheDocument();
+    render(
+      <StatusFilterBar
+        active={new Set<VehicleStatus>(["ACTIVE", "ON_SITE", "OFFLINE"])}
+        onToggle={() => {}}
+        vehicles={vehicles}
+      />,
+    );
+    expect(screen.getByRole("button", { name: /Active 2/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /On site 1/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Offline 1/ })).toBeInTheDocument();
   });
 
   it("reports aria-pressed and fires onToggle", async () => {
     const onToggle = vi.fn();
-    render(<StatusFilterBar active={new Set(["AVAILABLE"])} onToggle={onToggle} vehicles={vehicles} />);
-    const enRoute = screen.getByRole("button", { name: /En route/ });
-    expect(enRoute).toHaveAttribute("aria-pressed", "false");
-    await userEvent.click(enRoute);
-    expect(onToggle).toHaveBeenCalledWith("EN_ROUTE");
+    render(
+      <StatusFilterBar
+        active={new Set<VehicleStatus>(["ACTIVE"])}
+        onToggle={onToggle}
+        vehicles={vehicles}
+      />,
+    );
+    const onSite = screen.getByRole("button", { name: /On site/ });
+    expect(onSite).toHaveAttribute("aria-pressed", "false");
+    await userEvent.click(onSite);
+    expect(onToggle).toHaveBeenCalledWith("ON_SITE");
   });
 });

@@ -10,16 +10,14 @@ import {
   useMap,
   useMapEvents,
 } from "react-leaflet";
-import type { NearestVehicle, SiteView, Vehicle } from "../api/types";
+import type { SiteView, Vehicle } from "../api/types";
 import { STATUS_COLOR } from "../api/client";
 
 interface Props {
   vehicles: Vehicle[];
   selectedId: string | null;
   onSelect: (id: string) => void;
-  jobDraft: { lat: number; lon: number } | null;
   onMapClick: (lat: number, lon: number) => void;
-  shortlist: NearestVehicle[];
   sites: SiteView[];
   drawPoints: [number, number][];
   focus?: [number, number] | null;
@@ -44,15 +42,11 @@ export function MapCanvas({
   vehicles,
   selectedId,
   onSelect,
-  jobDraft,
   onMapClick,
-  shortlist,
   sites,
   drawPoints,
   focus,
 }: Props) {
-  const shortlistIds = new Set(shortlist.map((s) => s.vehicleId));
-
   return (
     <MapContainer center={[42.3601, -71.0589]} zoom={15} preferCanvas>
       <TileLayer
@@ -95,15 +89,14 @@ export function MapCanvas({
 
       {vehicles.map((v) => {
         const selected = v.vehicleId === selectedId;
-        const inShortlist = shortlistIds.has(v.vehicleId);
         return (
           <CircleMarker
             key={v.vehicleId}
             center={[v.latitude, v.longitude]}
-            radius={selected ? 9 : inShortlist ? 7 : 5}
+            radius={selected ? 9 : 5}
             pathOptions={{
-              color: selected || inShortlist ? "#16181c" : STATUS_COLOR[v.status],
-              weight: selected || inShortlist ? 2 : 1,
+              color: selected ? "#16181c" : STATUS_COLOR[v.status],
+              weight: selected ? 2 : 1,
               fillColor: STATUS_COLOR[v.status],
               fillOpacity: v.status === "OFFLINE" ? 0.5 : 0.95,
             }}
@@ -116,18 +109,6 @@ export function MapCanvas({
           </CircleMarker>
         );
       })}
-
-      {jobDraft && (
-        <CircleMarker
-          center={[jobDraft.lat, jobDraft.lon]}
-          radius={8}
-          pathOptions={{ color: "#d64545", weight: 3, fillColor: "#d64545", fillOpacity: 0.3 }}
-        >
-          <Tooltip permanent direction="top" offset={[0, -6]}>
-            Job location
-          </Tooltip>
-        </CircleMarker>
-      )}
     </MapContainer>
   );
 }

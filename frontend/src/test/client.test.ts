@@ -22,24 +22,23 @@ describe("api client", () => {
   });
 
   it("throws ApiError with status and server message on failure", async () => {
-    vi.stubGlobal("fetch", mockFetch(409, { message: "Job already assigned" }));
-    await expect(api.assignJob("JOB-1", "V-1")).rejects.toMatchObject({
+    vi.stubGlobal("fetch", mockFetch(409, { message: "Site name is required" }));
+    await expect(api.createSite({ name: "" })).rejects.toMatchObject({
       status: 409,
-      message: "Job already assigned",
+      message: "Site name is required",
     });
-    await expect(api.assignJob("JOB-1", "V-1")).rejects.toBeInstanceOf(ApiError);
+    await expect(api.createSite({ name: "" })).rejects.toBeInstanceOf(ApiError);
   });
 
-  it("builds the nearest query string", async () => {
-    const f = mockFetch(200, []);
+  it("builds the dwell report query string", async () => {
+    const f = mockFetch(200, {});
     vi.stubGlobal("fetch", f);
-    await api.nearest(42.36, -71.06, 3);
-    expect(f).toHaveBeenCalledWith("/api/vehicles/nearest?lat=42.36&lon=-71.06&limit=3", expect.anything());
+    await api.dwellReport({ from: 100, to: 200, siteId: "S1" });
+    expect(f).toHaveBeenCalledWith("/api/reports/dwell?from=100&to=200&siteId=S1", expect.anything());
   });
 
   it("maps every status to a colour", () => {
-    expect(STATUS_COLOR.AVAILABLE).toMatch(/^#/);
-    expect(STATUS_COLOR.EN_ROUTE).toMatch(/^#/);
+    expect(STATUS_COLOR.ACTIVE).toMatch(/^#/);
     expect(STATUS_COLOR.ON_SITE).toMatch(/^#/);
     expect(STATUS_COLOR.OFFLINE).toMatch(/^#/);
   });

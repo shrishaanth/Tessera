@@ -3,12 +3,6 @@ import { api } from "../api/client";
 import { STATUS_COLOR, STATUS_LABEL } from "../api/client";
 import type { VehicleDetail } from "../api/types";
 
-function fmtEta(seconds: number | null): string {
-  if (seconds == null) return "—";
-  const m = Math.round(seconds / 60);
-  return m < 1 ? "<1 min" : `${m} min`;
-}
-
 function fmtClock(ms: number): string {
   return new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
@@ -70,25 +64,6 @@ export function VehicleDetailPanel({ vehicleId, onClose }: { vehicleId: string; 
             {detail.onSiteName}
           </span>
         </div>
-      )}
-      <div className="kv">
-        <span>Current job</span>
-        <span>{detail.currentJob ? detail.currentJob.id : "—"}</span>
-      </div>
-      {detail.currentJob && (
-        <>
-          <div className="kv">
-            <span>Destination</span>
-            <span>
-              {detail.currentJob.destinationAddress ??
-                `${detail.currentJob.destLatitude.toFixed(4)}, ${detail.currentJob.destLongitude.toFixed(4)}`}
-            </span>
-          </div>
-          <div className="kv">
-            <span>ETA</span>
-            <span className="mono">{fmtEta(detail.etaSeconds)}</span>
-          </div>
-        </>
       )}
 
       {detail.recentGeofenceEvents.length > 0 && (

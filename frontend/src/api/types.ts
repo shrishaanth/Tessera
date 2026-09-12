@@ -1,4 +1,4 @@
-export type VehicleStatus = "AVAILABLE" | "EN_ROUTE" | "ON_SITE" | "OFFLINE";
+export type VehicleStatus = "ACTIVE" | "ON_SITE" | "OFFLINE";
 
 export interface Vehicle {
   vehicleId: string;
@@ -9,23 +9,11 @@ export interface Vehicle {
   headingDeg: number;
   speedKph: number;
   lastReportEpochMs: number;
-  currentJobId: string | null;
 }
 
 export interface StatusChange {
   status: VehicleStatus;
   epochMillis: number;
-}
-
-export interface Job {
-  id: string;
-  destinationAddress: string | null;
-  destLatitude: number;
-  destLongitude: number;
-  assignedVehicleId: string | null;
-  status: "UNASSIGNED" | "ASSIGNED" | "COMPLETED" | "CANCELLED";
-  createdAtEpochMs: number;
-  assignedAtEpochMs: number;
 }
 
 export interface GeofenceEventRecord {
@@ -38,8 +26,6 @@ export interface GeofenceEventRecord {
 
 export interface VehicleDetail {
   vehicle: Vehicle;
-  currentJob: Job | null;
-  etaSeconds: number | null;
   onSiteName: string | null;
   recentGeofenceEvents: GeofenceEventRecord[];
   statusHistory: StatusChange[];
@@ -79,20 +65,6 @@ export interface Alert {
   acknowledged: boolean;
 }
 
-export interface NearestVehicle {
-  vehicleId: string;
-  driverName: string | null;
-  straightLineMeters: number;
-  travelSeconds: number;
-  latitude: number;
-  longitude: number;
-}
-
-export interface CreateJobResponse {
-  job: Job;
-  nearestAvailable: NearestVehicle[];
-}
-
 export interface DataSourceInfo {
   key: string;
   name: string;
@@ -108,30 +80,12 @@ export interface Identity {
   role: string;
 }
 
-// ---- Phase 3: reporting (FR-4) ----
+// ---- Reporting (FR-4): average dwell time per site ----
 
 export interface Trend {
   previousValue: number | null;
   deltaValue: number | null;
   direction: "up" | "down" | "flat";
-}
-
-export interface WeekPoint {
-  weekStartEpochMs: number;
-  completed: number;
-  onTime: number;
-  onTimePct: number | null;
-}
-
-export interface OnTimeReport {
-  fromEpochMs: number;
-  toEpochMs: number;
-  completed: number;
-  onTime: number;
-  onTimePct: number | null;
-  byWeek: WeekPoint[];
-  trend: Trend;
-  provisional: boolean;
 }
 
 export interface SiteDwell {
@@ -156,8 +110,6 @@ export interface Readiness {
   ready: boolean;
   collectionDays: number;
   minCollectionDays: number;
-  completedJobs: number;
-  minCompletedJobs: number;
   siteExits: number;
   minSiteExits: number;
   reasons: string[];
@@ -165,12 +117,10 @@ export interface Readiness {
 }
 
 export interface ReportFilterOptions {
-  routes: string[];
-  drivers: string[];
   sites: { id: string; name: string }[];
 }
 
-// ---- Phase 4: search, geocoding, replay (FR-6, FR-5) ----
+// ---- Search, geocoding, replay (FR-6, FR-5) ----
 
 export interface GeocodeResult {
   displayName: string;

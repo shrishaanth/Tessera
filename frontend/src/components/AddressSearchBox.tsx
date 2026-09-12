@@ -15,9 +15,9 @@ interface Props {
 }
 
 /**
- * Address autocomplete + fuzzy customer-site search for new-job entry
- * (FR-6.1, FR-6.3). Debounced; a picked result carries real coordinates so the
- * nearest-vehicle search can run straight away (FR-6.2).
+ * Address autocomplete + fuzzy customer-site search (FR-6.1, FR-6.3). Debounced;
+ * a picked result carries real coordinates so the map can fly straight to it
+ * (FR-6.2).
  */
 export function AddressSearchBox({ onPick, placeholder }: Props) {
   const [q, setQ] = useState("");

@@ -8,7 +8,6 @@ import org.springframework.web.bind.annotation.RestController;
 import com.tessera.fleet.reporting.ReportFilter;
 import com.tessera.fleet.reporting.ReportModels.DwellReport;
 import com.tessera.fleet.reporting.ReportModels.FilterOptions;
-import com.tessera.fleet.reporting.ReportModels.OnTimeReport;
 import com.tessera.fleet.reporting.ReportModels.Readiness;
 import com.tessera.fleet.reporting.ReportingService;
 
@@ -27,23 +26,12 @@ public class ReportController {
         this.reporting = reporting;
     }
 
-    @GetMapping("/on-time")
-    public OnTimeReport onTime(
-            @RequestParam(required = false) Long from,
-            @RequestParam(required = false) Long to,
-            @RequestParam(required = false) String route,
-            @RequestParam(required = false) String driver,
-            @RequestParam(required = false) String siteId) {
-        return reporting.onTime(new ReportFilter(from, to, blankToNull(route),
-                blankToNull(driver), blankToNull(siteId)));
-    }
-
     @GetMapping("/dwell")
     public DwellReport dwell(
             @RequestParam(required = false) Long from,
             @RequestParam(required = false) Long to,
             @RequestParam(required = false) String siteId) {
-        return reporting.dwell(new ReportFilter(from, to, null, null, blankToNull(siteId)));
+        return reporting.dwell(new ReportFilter(from, to, blankToNull(siteId)));
     }
 
     @GetMapping("/readiness")

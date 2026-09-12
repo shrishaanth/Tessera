@@ -49,10 +49,18 @@ public abstract class AbstractRedisIntegrationTest {
     }
 
     @DynamicPropertySource
-    static void redisProperties(DynamicPropertyRegistry registry) {
+    static void integrationTestProperties(DynamicPropertyRegistry registry) {
         ensureStarted();
         registry.add("spring.data.redis.host", () -> "127.0.0.1");
         registry.add("spring.data.redis.port", () -> port);
+        // Integration tests assert on exact fleet contents, so the live feed must
+        // produce nothing: select the GTFS source and point it at a dead local
+        // address. Its one startup poll fails fast and yields an empty batch, so
+        // vehicles only exist where a test injects them. (This also guarantees no
+        // test ever reaches the real MBTA feed.)
+        registry.add("tessera.position-source", () -> "GTFS_REALTIME");
+        registry.add("tessera.gtfs.feed-url", () -> "http://127.0.0.1:9/disabled-in-tests");
+        registry.add("tessera.gtfs.poll-millis", () -> "3600000");
     }
 
     private static int findFreePort() throws IOException {

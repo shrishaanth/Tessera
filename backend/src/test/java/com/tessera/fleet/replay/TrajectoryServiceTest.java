@@ -20,8 +20,8 @@ class TrajectoryServiceTest {
     private FleetProperties propsWithMaxPoints(int maxPoints) {
         FleetProperties b = TestFixtures.fleetProperties();
         return new FleetProperties(b.offlineAfterSeconds(), b.ingestPollMillis(), b.broadcastMillis(),
-                b.nearest(), b.positionSource(), b.simulator(), b.gtfs(), b.roadGraphResource(),
-                b.geofence(), b.durable(), b.geocoding(),
+                b.positionSource(), b.dataset(), b.gtfs(), b.roadGraphResource(), b.geofence(),
+                b.durable(), b.geocoding(),
                 new FleetProperties.Replay(maxPoints), b.users());
     }
 

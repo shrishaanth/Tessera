@@ -1,27 +1,22 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLiveStream } from "../live/LiveStreamContext";
 import { api } from "../api/client";
-import type { NearestVehicle, SiteView, VehicleStatus } from "../api/types";
+import type { SiteView, VehicleStatus } from "../api/types";
 import { MapCanvas } from "./MapCanvas";
 import { StatusFilterBar } from "./StatusFilterBar";
 import { VehicleDetailPanel } from "./VehicleDetailPanel";
-import { NewJobPanel } from "./NewJobPanel";
+import { AddressSearchBox } from "./AddressSearchBox";
 import type { PickedLocation } from "./AddressSearchBox";
 import { SitePanel } from "./SitePanel";
 import type { SiteDrawMode } from "./SitePanel";
 
-const ALL: VehicleStatus[] = ["AVAILABLE", "EN_ROUTE", "ON_SITE", "OFFLINE"];
+const ALL: VehicleStatus[] = ["ACTIVE", "ON_SITE", "OFFLINE"];
 
 export function LiveMapView() {
   const { vehicles, connected, lastUpdateMs, geofenceFeed } = useLiveStream();
 
   const [filter, setFilter] = useState<Set<VehicleStatus>>(new Set(ALL));
   const [selectedId, setSelectedId] = useState<string | null>(null);
-
-  const [jobMode, setJobMode] = useState(false);
-  const [jobDraft, setJobDraft] = useState<{ lat: number; lon: number } | null>(null);
-  const [jobId, setJobId] = useState<string | null>(null);
-  const [shortlist, setShortlist] = useState<NearestVehicle[]>([]);
 
   const [sites, setSites] = useState<SiteView[]>([]);
   const [siteMode, setSiteMode] = useState<SiteDrawMode>("idle");
@@ -46,43 +41,19 @@ export function LiveMapView() {
       return next;
     });
 
-  const startJobAt = async (lat: number, lon: number, address?: string) => {
-    setJobMode(true);
-    setJobDraft({ lat, lon });
-    setSelectedId(null);
-    setFocus([lat, lon]);
-    try {
-      const res = await api.createJob(lat, lon, address);
-      setJobId(res.job.id);
-      setShortlist(res.nearestAvailable);
-    } catch {
-      setShortlist([]);
-    }
-  };
-
-  const onMapClick = async (lat: number, lon: number) => {
+  const onMapClick = (lat: number, lon: number) => {
     if (siteMode === "sitePoly") {
       setDrawPoints((p) => [...p, [lat, lon]]);
       return;
     }
     if (siteMode === "siteRadius") {
       setRadiusCenter([lat, lon]);
-      return;
     }
-    if (!jobMode) return;
-    await startJobAt(lat, lon);
   };
 
   const onSearchPick = (loc: PickedLocation) => {
     resetSiteDraw();
-    void startJobAt(loc.lat, loc.lon, loc.kind === "address" ? loc.label : undefined);
-  };
-
-  const resetJob = () => {
-    setJobMode(false);
-    setJobDraft(null);
-    setJobId(null);
-    setShortlist([]);
+    setFocus([loc.lat, loc.lon]);
   };
 
   const resetSiteDraw = () => {
@@ -143,13 +114,8 @@ export function LiveMapView() {
         <MapCanvas
           vehicles={visible}
           selectedId={selectedId}
-          onSelect={(id) => {
-            setSelectedId(id);
-            if (!jobMode) setJobDraft(null);
-          }}
-          jobDraft={jobDraft}
+          onSelect={setSelectedId}
           onMapClick={onMapClick}
-          shortlist={shortlist}
           sites={sites}
           drawPoints={siteMode === "sitePoly" ? drawPoints : []}
           focus={focus}
@@ -157,42 +123,29 @@ export function LiveMapView() {
       </div>
 
       <aside className="side">
-        <NewJobPanel
-          jobDraft={jobMode ? jobDraft : null}
-          jobId={jobId}
-          shortlist={shortlist}
-          onStart={() => {
-            resetSiteDraw();
-            setJobMode(true);
-            setSelectedId(null);
-          }}
-          onSearchPick={onSearchPick}
-          onCancel={resetJob}
-          onAssigned={resetJob}
-        />
+        <section>
+          <div className="label-xs">Find a place</div>
+          <AddressSearchBox onPick={onSearchPick} placeholder="Search an address or customer site…" />
+        </section>
 
-        {!jobMode && (
-          <SitePanel
-            sites={sites}
-            mode={siteMode}
-            drawPoints={drawPoints}
-            radiusCenter={radiusCenter}
-            onStartPolygon={() => {
-              resetJob();
-              setDrawPoints([]);
-              setSiteMode("sitePoly");
-            }}
-            onStartRadius={() => {
-              resetJob();
-              setRadiusCenter(null);
-              setSiteMode("siteRadius");
-            }}
-            onCancel={resetSiteDraw}
-            onFinishPolygon={finishPolygon}
-            onFinishRadius={finishRadius}
-            onDelete={deleteSite}
-          />
-        )}
+        <SitePanel
+          sites={sites}
+          mode={siteMode}
+          drawPoints={drawPoints}
+          radiusCenter={radiusCenter}
+          onStartPolygon={() => {
+            setDrawPoints([]);
+            setSiteMode("sitePoly");
+          }}
+          onStartRadius={() => {
+            setRadiusCenter(null);
+            setSiteMode("siteRadius");
+          }}
+          onCancel={resetSiteDraw}
+          onFinishPolygon={finishPolygon}
+          onFinishRadius={finishRadius}
+          onDelete={deleteSite}
+        />
 
         {recentGeofence.length > 0 && (
           <section>
@@ -211,7 +164,7 @@ export function LiveMapView() {
           </section>
         )}
 
-        {selectedId && !jobMode && siteMode === "idle" && (
+        {selectedId && siteMode === "idle" && (
           <VehicleDetailPanel vehicleId={selectedId} onClose={() => setSelectedId(null)} />
         )}
       </aside>

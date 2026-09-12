@@ -6,10 +6,9 @@ import com.tessera.fleet.config.FleetProperties;
 import com.tessera.fleet.model.VehicleStatus;
 
 /**
- * Derives the dispatcher-visible {@link VehicleStatus} (FR-1.1) from live-layer
- * facts. Kept tiny and pure so it is trivially unit-testable and identical
- * whether invoked on a position report, on job assignment, or on the periodic
- * offline sweep.
+ * Derives the map-visible {@link VehicleStatus} (FR-1.1) from live-layer facts.
+ * Kept tiny and pure so it is trivially unit-testable and identical whether
+ * invoked on a position report or on the periodic offline sweep.
  */
 @Component
 public class VehicleStatusResolver {
@@ -23,18 +22,14 @@ public class VehicleStatusResolver {
     /**
      * @param lastReportEpochMs timestamp of the vehicle's most recent position report
      * @param nowEpochMs        current time
-     * @param hasActiveJob      an assigned, not-yet-completed job exists
      * @param insideGeofence    vehicle is within a customer-site boundary (Phase 2+)
      */
     public VehicleStatus resolve(long lastReportEpochMs, long nowEpochMs,
-                                 boolean hasActiveJob, boolean insideGeofence) {
+                                 boolean insideGeofence) {
         if (lastReportEpochMs <= 0 || nowEpochMs - lastReportEpochMs > offlineAfterMillis) {
             return VehicleStatus.OFFLINE;
         }
-        if (insideGeofence) {
-            return VehicleStatus.ON_SITE;
-        }
-        return hasActiveJob ? VehicleStatus.EN_ROUTE : VehicleStatus.AVAILABLE;
+        return insideGeofence ? VehicleStatus.ON_SITE : VehicleStatus.ACTIVE;
     }
 
     public long offlineAfterMillis() {
