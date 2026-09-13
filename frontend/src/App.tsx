@@ -1,79 +1,82 @@
-import { useState } from "react";
-import { useAuth } from "./auth/AuthContext";
-import { LiveStreamProvider, useLiveStream } from "./live/LiveStreamContext";
-import { LoginView } from "./components/LoginView";
-import { LiveMapView } from "./components/LiveMapView";
-import { AlertsView } from "./components/AlertsView";
-import { ReportsView } from "./components/ReportsView";
-import { ReplayView } from "./components/ReplayView";
-import { DataSourcesView } from "./components/DataSourcesView";
+import { useMemo, useState } from "react";
 
-type Tab = "map" | "alerts" | "reports" | "replay" | "settings";
+import { AlertFeed } from "./components/AlertFeed";
+import { DataSourceBanner } from "./components/DataSourceBanner";
+import { FleetTable } from "./components/FleetTable";
+import { RiskMap } from "./components/RiskMap";
+import { VehicleDetail } from "./components/VehicleDetail";
+import { RISK_COLOURS, RISK_ORDER, timeAgo } from "./components/risk";
+import { useAlerts } from "./live/useAlerts";
+import { useFleet } from "./live/useFleet";
 
-function Shell() {
-  const { identity, logout } = useAuth();
-  const { connected, unacknowledged } = useLiveStream();
-  const [tab, setTab] = useState<Tab>("map");
+/**
+ * Tessera Risk — the operations dashboard.
+ *
+ * <p>One screen, because the question it answers is one question: which vehicles
+ * need attention right now. The map says where, the list says who is worst, the
+ * feed says what just happened, and selecting any of them selects the same vehicle
+ * in all three.
+ */
+export function App() {
+  const { snapshot, error, loading, updatedAt } = useFleet(5000);
+  const { alerts, connected, retries } = useAlerts();
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  const vehicles = snapshot?.vehicles ?? [];
+  const selected = useMemo(
+    () => vehicles.find((vehicle) => vehicle.vehicleId === selectedId) ?? null,
+    [vehicles, selectedId],
+  );
 
   return (
     <div className="app">
-      <div className="topbar">
-        <span className="brand">TESSERA FLEET</span>
-        <span
-          className="dot"
-          title={connected ? "Live stream connected" : "Reconnecting"}
-          style={{ background: connected ? "var(--status-available)" : "var(--status-danger)" }}
-        />
-        <span className="spacer" />
-        {unacknowledged > 0 && (
-          <button className="link" onClick={() => setTab("alerts")} style={{ color: "var(--status-on-site)" }}>
-            ⚠ {unacknowledged} alert{unacknowledged > 1 ? "s" : ""}
-          </button>
-        )}
-        <span className="who">
-          {identity!.username} · {identity!.role}
-        </span>
-        <button className="link" onClick={() => void logout()}>
-          Sign out
-        </button>
-      </div>
-      <div className="body">
-        <nav className="nav">
-          <button className={tab === "map" ? "active" : ""} onClick={() => setTab("map")}>
-            Live Map
-          </button>
-          <button className={tab === "alerts" ? "active" : ""} onClick={() => setTab("alerts")}>
-            Alerts{unacknowledged > 0 ? ` (${unacknowledged})` : ""}
-          </button>
-          <button className={tab === "reports" ? "active" : ""} onClick={() => setTab("reports")}>
-            Reports
-          </button>
-          <button className={tab === "replay" ? "active" : ""} onClick={() => setTab("replay")}>
-            Replay
-          </button>
-          <button className={tab === "settings" ? "active" : ""} onClick={() => setTab("settings")}>
-            Settings
-          </button>
-        </nav>
-        <main className="view">
-          {tab === "map" && <LiveMapView />}
-          {tab === "alerts" && <AlertsView />}
-          {tab === "reports" && <ReportsView />}
-          {tab === "replay" && <ReplayView />}
-          {tab === "settings" && <DataSourcesView />}
-        </main>
-      </div>
-    </div>
-  );
-}
+      {/* First in the flow, above everything, and not dismissible (FR-6.2). */}
+      <DataSourceBanner />
 
-export function App() {
-  const { identity, loading } = useAuth();
-  if (loading) return <div className="login">Loading…</div>;
-  if (!identity) return <LoginView />;
-  return (
-    <LiveStreamProvider>
-      <Shell />
-    </LiveStreamProvider>
+      <header className="topbar">
+        <div className="topbar__title">
+          <h1>Tessera Risk</h1>
+          <p className="muted small">Fleet driver-behaviour risk</p>
+        </div>
+
+        <div className="topbar__status">
+          {error && <span className="badge badge--warn">API error: {error}</span>}
+          {!error && loading && <span className="badge">Loading…</span>}
+          {!error && !loading && updatedAt && (
+            <span className="badge">Updated {timeAgo(updatedAt)}</span>
+          )}
+          {snapshot && !snapshot.modelScored && (
+            // Named, not blank: the dashboard says why the model column is empty.
+            <span className="badge badge--muted">No model trained</span>
+          )}
+        </div>
+
+        <ul className="legend" aria-label="Risk levels">
+          {RISK_ORDER.map((level) => (
+            <li key={level}>
+              <span className="dot" style={{ background: RISK_COLOURS[level] }} aria-hidden="true" />
+              {level.toLowerCase()}
+            </li>
+          ))}
+        </ul>
+      </header>
+
+      <main className="layout">
+        <section className="layout__map">
+          <RiskMap vehicles={vehicles} selectedId={selectedId} onSelect={setSelectedId} />
+        </section>
+
+        <aside className="layout__side">
+          <FleetTable vehicles={vehicles} selectedId={selectedId} onSelect={setSelectedId} />
+          <VehicleDetail vehicle={selected} onClose={() => setSelectedId(null)} />
+          <AlertFeed
+            alerts={alerts}
+            connected={connected}
+            retries={retries}
+            onSelect={setSelectedId}
+          />
+        </aside>
+      </main>
+    </div>
   );
 }

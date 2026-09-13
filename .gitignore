@@ -4,6 +4,11 @@
 target/
 frontend/dist/
 
+# The compiled dashboard. Vite emits it into the reporting API's static resources
+# so Spring Boot serves the SPA and the API from one port; it is build output that
+# happens to live under src/, not source.
+reporting-api/src/main/resources/static/
+
 # Node
 node_modules/
 npm-debug.log*

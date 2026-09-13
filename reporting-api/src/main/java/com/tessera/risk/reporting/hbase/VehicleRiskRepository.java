@@ -2,6 +2,7 @@ package com.tessera.risk.reporting.hbase;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -48,14 +49,41 @@ public class VehicleRiskRepository {
     }
 
     /**
-     * The newest window for one vehicle, or empty if it has never reported.
+     * How many recent windows to consider when choosing the one to display.
      *
-     * <p>A one-row scan, not a full scan with a sort.
+     * <p>Slightly more than the five a vehicle is in at once under the default
+     * five-minute window sliding by a minute, so the fullest is always among them.
+     */
+    private static final int CANDIDATE_WINDOWS = 6;
+
+    /**
+     * The window that best describes a vehicle now, or empty if it has never
+     * reported.
+     *
+     * <h2>Not simply the newest one</h2>
+     * The obvious implementation is a one-row scan, and it produces a dashboard that
+     * flickers. Windows slide by a minute, so a vehicle is in five at once, and the
+     * newest is the one that has just opened — perhaps ten readings old. Because the
+     * risk score is a rate, that window's score is computed over almost no evidence,
+     * and it swings between 0 and 100 as windows roll over.
+     *
+     * <p>Every one of those windows already contains the vehicle's latest reading;
+     * they differ only in how far back they reach. So the fullest is not staler than
+     * the newest — it is the same moment seen over a longer run, and it is the one
+     * the score was calibrated against. Six rows rather than one is a trivially
+     * larger scan for a number that stops jumping.
+     *
+     * <p>This is the same reasoning the streaming job's alert rules use, and for the
+     * same reason.
      */
     public Optional<VehicleRisk> latest(String vehicleId, Map<String, String> driverNames)
             throws IOException {
-        List<VehicleRisk> rows = history(vehicleId, 1, driverNames);
-        return rows.isEmpty() ? Optional.empty() : Optional.of(rows.get(0));
+        List<VehicleRisk> candidates = history(vehicleId, CANDIDATE_WINDOWS, driverNames);
+        return candidates.stream().max(
+                // Most readings wins; the newer window breaks a tie, which happens
+                // when a vehicle has been reporting for less than one full window.
+                Comparator.comparingLong(VehicleRisk::readingCount)
+                        .thenComparingLong(VehicleRisk::windowStart));
     }
 
     /** The newest {@code limit} windows for one vehicle, newest first. */

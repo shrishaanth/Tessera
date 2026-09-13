@@ -1,137 +1,82 @@
 import type {
-  Alert,
+  AlertStatus,
   DataSourceInfo,
-  DwellReport,
-  GeocodeResponse,
-  GeofenceEventRecord,
-  Identity,
-  Readiness,
-  ReplayVehicle,
-  ReportFilterOptions,
-  SiteDefinition,
-  SiteView,
-  Trajectory,
-  Vehicle,
-  VehicleDetail,
-  VehicleStatus,
+  FleetSnapshot,
+  RiskAlert,
+  SegmentRisk,
+  VehicleRisk,
 } from "./types";
 
-export interface ReportQuery {
-  from?: number;
-  to?: number;
-  siteId?: string;
-}
+/**
+ * Thin wrappers over the reporting API.
+ *
+ * <p>Relative URLs throughout. In development Vite proxies `/api` and `/ws` to the
+ * service, and in a build the service serves this bundle itself — so the browser
+ * always talks to one origin and there is no CORS configuration, no base URL to
+ * configure, and nothing to get wrong between environments.
+ */
 
-/** Thrown for any non-2xx response; carries the HTTP status. */
+/** A failed request, carrying the status so callers can tell 404 from 503. */
 export class ApiError extends Error {
   constructor(
-    public status: number,
+    readonly status: number,
     message: string,
   ) {
     super(message);
+    this.name = "ApiError";
   }
 }
 
-async function req<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, {
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    ...init,
+async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
+  const response = await fetch(path, {
+    signal,
+    headers: { Accept: "application/json" },
   });
-  if (!res.ok) {
-    let msg = res.statusText;
-    try {
-      const body = await res.json();
-      if (body?.message) msg = body.message;
-    } catch {
-      /* no body */
-    }
-    throw new ApiError(res.status, msg);
+  if (!response.ok) {
+    throw new ApiError(
+      response.status,
+      `${path} responded ${response.status} ${response.statusText}`,
+    );
   }
-  if (res.status === 204) return undefined as T;
-  return (await res.json()) as T;
+  return (await response.json()) as T;
 }
 
 export const api = {
-  me: () => req<Identity>("/api/auth/me"),
+  fleet: (signal?: AbortSignal) => get<FleetSnapshot>("/api/fleet", signal),
 
-  login: (username: string, password: string) =>
-    req<Identity>("/api/auth/login", {
-      method: "POST",
-      body: JSON.stringify({ username, password }),
-    }),
+  vehicle: (vehicleId: string, signal?: AbortSignal) =>
+    get<VehicleRisk>(`/api/vehicles/${encodeURIComponent(vehicleId)}`, signal),
 
-  logout: () => req<void>("/api/auth/logout", { method: "POST" }),
+  vehicleHistory: (vehicleId: string, windows = 30, signal?: AbortSignal) =>
+    get<VehicleRisk[]>(
+      `/api/vehicles/${encodeURIComponent(vehicleId)}/history?windows=${windows}`,
+      signal,
+    ),
 
-  vehicles: (status?: VehicleStatus) =>
-    req<Vehicle[]>("/api/vehicles" + (status ? `?status=${status}` : "")),
+  segmentHistory: (segmentId: string, windows = 30, signal?: AbortSignal) =>
+    get<SegmentRisk[]>(
+      `/api/segments/${encodeURIComponent(segmentId)}/history?windows=${windows}`,
+      signal,
+    ),
 
-  vehicleDetail: (id: string) => req<VehicleDetail>(`/api/vehicles/${encodeURIComponent(id)}`),
+  alerts: (limit = 50, signal?: AbortSignal) =>
+    get<RiskAlert[]>(`/api/alerts?limit=${limit}`, signal),
 
-  dataSources: () => req<DataSourceInfo[]>("/api/data-sources"),
+  alertStatus: (signal?: AbortSignal) =>
+    get<AlertStatus>("/api/alerts/status", signal),
 
-  sites: () => req<SiteView[]>("/api/sites"),
-
-  createSite: (def: SiteDefinition) =>
-    req<SiteView>("/api/sites", { method: "POST", body: JSON.stringify(def) }),
-
-  deleteSite: (id: string) =>
-    req<void>(`/api/sites/${encodeURIComponent(id)}`, { method: "DELETE" }),
-
-  alerts: (includeAcknowledged = false) =>
-    req<Alert[]>(`/api/alerts?includeAcknowledged=${includeAcknowledged}`),
-
-  ackAlert: (id: string) =>
-    req<Alert>(`/api/alerts/${encodeURIComponent(id)}/ack`, { method: "POST" }),
-
-  geofenceEvents: (params: { vehicleId?: string; siteId?: string; limit?: number } = {}) => {
-    const q = new URLSearchParams();
-    if (params.vehicleId) q.set("vehicleId", params.vehicleId);
-    if (params.siteId) q.set("siteId", params.siteId);
-    q.set("limit", String(params.limit ?? 100));
-    return req<GeofenceEventRecord[]>(`/api/geofence-events?${q.toString()}`);
-  },
-
-  reportReadiness: () => req<Readiness>("/api/reports/readiness"),
-
-  reportFilters: () => req<ReportFilterOptions>("/api/reports/filters"),
-
-  dwellReport: (q: ReportQuery = {}) => req<DwellReport>(`/api/reports/dwell${reportQs(q)}`),
-
-  geocode: (q: string, limit = 6) =>
-    req<GeocodeResponse>(`/api/geocode?q=${encodeURIComponent(q)}&limit=${limit}`),
-
-  searchSites: (q: string, limit = 8) =>
-    req<SiteView[]>(`/api/sites/search?q=${encodeURIComponent(q)}&limit=${limit}`),
-
-  replayVehicles: () => req<ReplayVehicle[]>("/api/replay/vehicles"),
-
-  trajectory: (params: { vehicleId: string; date?: string; from?: number; to?: number }) => {
-    const p = new URLSearchParams({ vehicleId: params.vehicleId });
-    if (params.date) p.set("date", params.date);
-    if (params.from) p.set("from", String(params.from));
-    if (params.to) p.set("to", String(params.to));
-    return req<Trajectory>(`/api/replay/trajectory?${p.toString()}`);
-  },
+  dataSource: (signal?: AbortSignal) =>
+    get<DataSourceInfo>("/api/meta/data-source", signal),
 };
 
-function reportQs(q: ReportQuery): string {
-  const p = new URLSearchParams();
-  if (q.from) p.set("from", String(q.from));
-  if (q.to) p.set("to", String(q.to));
-  if (q.siteId) p.set("siteId", q.siteId);
-  const s = p.toString();
-  return s ? `?${s}` : "";
+/**
+ * The WebSocket URL for the alert feed.
+ *
+ * <p>Derived from the page's own origin rather than configured, so it follows
+ * whatever host and scheme the app was loaded from. Hard-coding `ws://localhost`
+ * works right up until the page is opened from anywhere else.
+ */
+export function alertSocketUrl(): string {
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  return `${protocol}//${window.location.host}/ws/alerts`;
 }
-
-export const STATUS_COLOR: Record<VehicleStatus, string> = {
-  ACTIVE: "#1d9e75",
-  ON_SITE: "#c98a1f",
-  OFFLINE: "#b0b5bb",
-};
-
-export const STATUS_LABEL: Record<VehicleStatus, string> = {
-  ACTIVE: "Active",
-  ON_SITE: "On site",
-  OFFLINE: "Offline",
-};

@@ -1,9 +1,9 @@
 {
-  "name": "tessera-fleet-frontend",
+  "name": "tessera-risk-frontend",
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "Tessera Fleet — dispatcher & operations dashboards",
+  "description": "Tessera Risk — fleet driver-behaviour risk dashboard",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",

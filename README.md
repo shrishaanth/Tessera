@@ -77,7 +77,7 @@ support only arrived in Spark 4.0.
 | `batch-job` | ✅ | RDD feature engineering over the Parquet archive |
 | `ml-training` | ✅ | MLlib classifier training, evaluation and persistence |
 | `reporting-api` | ✅ | REST and WebSocket access to the HBase risk store |
-| `frontend` | carried over | Leaflet dashboard, to be re-themed for risk |
+| `frontend` | ✅ | React + Leaflet risk dashboard |
 
 ## Running it
 
@@ -101,8 +101,22 @@ java -jar event-producer/target/event-producer-1.0.0.jar
 Then the streaming job, which reads the topic, aggregates it and writes to HBase:
 
 ```bash
-docker compose --profile pipeline up streaming-job
+docker compose --profile pipeline up -d streaming-job
 ```
+
+And the dashboard, which serves the API and the UI on one port:
+
+```bash
+cd frontend && npm install && npm run build && cd ..
+mvn -q install -DskipTests
+docker compose --profile pipeline up -d reporting-api
+# http://localhost:8090
+```
+
+The full order from nothing is: infrastructure, producer, streaming job, dashboard.
+The archive generator, batch job and training are separate one-shot jobs that add
+the model — see **Building the training set**. Everything works without them; the
+dashboard says so rather than showing blanks.
 
 Configuration is entirely by environment variable — `KAFKA_BOOTSTRAP_SERVERS`,
 `TESSERA_VEHICLE_COUNT`, `TESSERA_TICK_MILLIS`, `TESSERA_WINDOW_MINUTES`,
@@ -225,6 +239,17 @@ produce plausible-looking wrong data rather than an exception:
 > Spark's tests need a Java 17 runtime — see **Java version** above. With the
 > toolchain configured, `mvn test` runs all 120 on any JDK.
 
+The dashboard has its own suite:
+
+```bash
+cd frontend && npm test
+```
+
+Nineteen tests, and the ones that matter guard claims rather than rendering: that
+the simulated-data disclosure survives the API being unreachable and has no dismiss
+control, that an absent model prediction is shown as a dash and never as 0%, and
+that the alert feed distinguishes a calm fleet from a dead socket.
+
 To inspect the event distribution directly:
 
 ```bash
@@ -320,6 +345,49 @@ The label is built by joining the window aggregate against a copy of itself keye
 one window earlier. The inner join then pairs window *w*'s features with *w+1*'s
 incidents, and windows with no successor drop out on their own, which is right
 since they cannot be labelled.
+
+## The dashboard
+
+```bash
+cd frontend && npm install && npm run build && cd ..
+mvn -q install -DskipTests
+docker compose --profile pipeline up -d reporting-api
+# then open http://localhost:8090
+```
+
+Vite emits into the reporting API's static resources, so Spring Boot serves the
+dashboard and the API from one port and one container — no CORS, no base URL to
+configure, and nothing that works in development but not in a build. The cost is
+that the frontend must be built before the jar is packaged; `npm run dev` proxies
+`/api` and `/ws` to `:8090` for the inner loop.
+
+One screen, because it answers one question: which vehicles need attention now. The
+map says where, the list says who is worst, the feed says what just happened, and
+selecting in any of the three selects in all of them.
+
+- **Map coloured by risk** (FR-5.2), refreshed every five seconds. Circle markers
+  rather than pins, because a pin's colour is a small part of its area; radius grows
+  with risk too, so severity survives greyscale and colour-vision deficiency.
+- **Live alert feed** over the WebSocket (FR-5.3), with incidents marked out from
+  threshold crossings. The connection state is shown, because a calm fleet and a
+  dead socket are both an empty list.
+- **The disclosure is the first thing on the page** (FR-6.1, FR-6.2) — full width,
+  normal-size text, and **not dismissible**. A banner an operator can close is a
+  banner most operators have closed. The text is served by `/api/meta/data-source`
+  rather than hard-coded, so it cannot drift from the system generating the data;
+  if that request fails the component still discloses, from a fallback.
+
+Leaflet is driven directly rather than through react-leaflet: markers are created
+once and mutated in place, so a poll every five seconds does not reconcile a tree of
+components and recreate the layers underneath. The map also keeps the operator's pan
+and zoom across updates, which a re-fitting view would not.
+
+### Absent is never rendered as zero
+
+`probability` is `null` until a model has been trained, and the dashboard shows a
+dash. Showing `0%` would claim the model is confident nothing will happen — a
+different statement, and one nothing has made. `formatProbability` is the single
+place that decision lives, and it is tested.
 
 ## The reporting API
 

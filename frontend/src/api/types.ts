@@ -1,189 +1,106 @@
-export type VehicleStatus = "ACTIVE" | "ON_SITE" | "OFFLINE";
+/**
+ * The shapes the reporting API serves.
+ *
+ * These mirror the Java records in `reporting-api`, and nothing in either build
+ * connects the two — a renamed field compiles on both sides and breaks only at run
+ * time. `FleetControllerTest` pins the names from the Java side; this file is the
+ * other half of that agreement.
+ */
 
-export interface Vehicle {
+/** Risk banded for display. The service decides the bands, not the client. */
+export type RiskLevel = "LOW" | "MODERATE" | "HIGH" | "SEVERE";
+
+export type RiskTier = "SAFE" | "AVERAGE" | "RISKY";
+
+/** One vehicle's risk state for one window. */
+export interface VehicleRisk {
   vehicleId: string;
-  driverName: string | null;
-  status: VehicleStatus;
-  latitude: number;
-  longitude: number;
+  driverId: string;
+  driverName: string;
+  riskTier: RiskTier;
+  windowStart: number;
+  windowEnd: number;
+  readingCount: number;
+  hardBrakeCount: number;
+  speedViolationCount: number;
+  incidentCount: number;
+  avgSpeedKph: number;
+  maxSpeedKph: number;
+  avgOverLimitRatio: number;
+  maxSeverity: number;
+  movingRatio: number;
+  lat: number;
+  lon: number;
   headingDeg: number;
-  speedKph: number;
-  lastReportEpochMs: number;
+  lastReadingTs: number;
+  riskScore: number;
+  riskLevel: RiskLevel;
+  /**
+   * Null until a model has been trained — not zero.
+   *
+   * A probability of 0 means the model is confident nothing will happen; null
+   * means no model has run. Rendering the second as the first would be inventing
+   * a prediction, so every use of these fields checks `modelScored` first.
+   */
+  predictedLabel: number | null;
+  probability: number | null;
+  modelScored: boolean;
 }
 
-export interface StatusChange {
-  status: VehicleStatus;
-  epochMillis: number;
+export interface FleetSnapshot {
+  generatedAt: number;
+  vehicleCount: number;
+  /** Whether any vehicle carries a model prediction. */
+  modelScored: boolean;
+  vehicles: VehicleRisk[];
 }
 
-export interface GeofenceEventRecord {
+/** One road segment's traffic and risk for one window. */
+export interface SegmentRisk {
+  segmentId: string;
+  windowStart: number;
+  windowEnd: number;
+  readingCount: number;
+  vehicleCount: number;
+  avgSpeedKph: number;
+  speedLimitKph: number;
+  complianceRatio: number;
+  hardBrakeCount: number;
+  speedViolationCount: number;
+  incidentCount: number;
+  riskIndex: number;
+  riskLevel: RiskLevel;
+}
+
+/** A notification that a vehicle crossed a risk threshold. */
+export interface RiskAlert {
   vehicleId: string;
-  siteId: string;
-  type: "ENTER" | "EXIT";
-  epochMillis: number;
-  dwellSeconds: number | null;
+  driverId: string;
+  riskTier: RiskTier;
+  windowStart: number;
+  windowEnd: number;
+  riskScore: number;
+  hardBrakeCount: number;
+  speedViolationCount: number;
+  incidentCount: number;
+  /** The score is a rate, so its denominator travels with it. */
+  readingCount: number;
+  reason: string;
+  raisedAt: number;
 }
 
-export interface VehicleDetail {
-  vehicle: Vehicle;
-  onSiteName: string | null;
-  recentGeofenceEvents: GeofenceEventRecord[];
-  statusHistory: StatusChange[];
-}
-
-export interface SiteView {
-  id: string;
-  name: string;
-  address: string | null;
-  kind: "POLYGON" | "RADIUS";
-  outline: [number, number][];
-  centerLat: number | null;
-  centerLon: number | null;
-  radiusMeters: number | null;
-  dwellAlertSeconds: number | null;
-  createdAtEpochMs: number;
-}
-
-export interface SiteDefinition {
-  name: string;
-  address?: string | null;
-  polygon?: [number, number][] | null;
-  centerLat?: number | null;
-  centerLon?: number | null;
-  radiusMeters?: number | null;
-  dwellAlertSeconds?: number | null;
-}
-
-export interface Alert {
-  id: string;
-  type: "DWELL_EXCEEDED";
-  severity: "INFO" | "WARNING";
-  vehicleId: string | null;
-  siteId: string | null;
-  message: string;
-  createdAtEpochMs: number;
-  acknowledged: boolean;
-}
-
+/** The simulated-data disclosure (FR-6.1), served rather than hard-coded here. */
 export interface DataSourceInfo {
-  key: string;
-  name: string;
-  provider: string;
-  purpose: string;
-  role: "PRODUCTION" | "SUBSTITUTE";
-  disclosure: string;
-  active: boolean;
+  simulated: boolean;
+  headline: string;
+  details: string[];
 }
 
-export interface Identity {
-  username: string;
-  role: string;
+/** Whether the alert feed is actually working, as opposed to merely quiet. */
+export interface AlertStatus {
+  consumerRunning: boolean;
+  alertsConsumed: number;
+  malformedDiscarded: number;
+  buffered: number;
+  connectedDashboards: number;
 }
-
-// ---- Reporting (FR-4): average dwell time per site ----
-
-export interface Trend {
-  previousValue: number | null;
-  deltaValue: number | null;
-  direction: "up" | "down" | "flat";
-}
-
-export interface SiteDwell {
-  siteId: string;
-  siteName: string;
-  visits: number;
-  avgDwellSeconds: number | null;
-  enoughData: boolean;
-}
-
-export interface DwellReport {
-  fromEpochMs: number;
-  toEpochMs: number;
-  totalVisits: number;
-  overallAvgDwellSeconds: number | null;
-  bySite: SiteDwell[];
-  trend: Trend;
-  provisional: boolean;
-}
-
-export interface Readiness {
-  ready: boolean;
-  collectionDays: number;
-  minCollectionDays: number;
-  siteExits: number;
-  minSiteExits: number;
-  reasons: string[];
-  syntheticHistory: boolean;
-}
-
-export interface ReportFilterOptions {
-  sites: { id: string; name: string }[];
-}
-
-// ---- Search, geocoding, replay (FR-6, FR-5) ----
-
-export interface GeocodeResult {
-  displayName: string;
-  latitude: number;
-  longitude: number;
-  category: string;
-  type: string;
-  importance: number;
-}
-
-export interface GeocodeResponse {
-  query: string;
-  results: GeocodeResult[];
-  degraded: boolean;
-}
-
-export interface ReplayVehicle {
-  vehicleId: string;
-  driverName: string | null;
-}
-
-export interface TrajectoryPoint {
-  latitude: number;
-  longitude: number;
-  epochMillis: number;
-  speedKph: number;
-  headingDeg: number;
-}
-
-export interface Trajectory {
-  vehicleId: string;
-  fromEpochMs: number;
-  toEpochMs: number;
-  totalPoints: number;
-  sampled: boolean;
-  points: TrajectoryPoint[];
-}
-
-export interface FleetFrame {
-  type: "fleet";
-  ts: number;
-  vehicles: Vehicle[];
-}
-
-export interface GeofenceEventFrameData {
-  vehicleId: string;
-  siteId: string;
-  siteName: string;
-  eventType: "ENTER" | "EXIT";
-  epochMillis: number;
-  dwellSeconds: number;
-}
-
-export interface GeofenceFrame {
-  type: "geofence";
-  ts: number;
-  event: GeofenceEventFrameData;
-}
-
-export interface AlertFrame {
-  type: "alert";
-  ts: number;
-  alert: Alert;
-}
-
-export type LiveFrame = FleetFrame | GeofenceFrame | AlertFrame;
