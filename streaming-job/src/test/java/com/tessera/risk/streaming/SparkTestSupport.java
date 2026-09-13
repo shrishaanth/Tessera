@@ -40,6 +40,6 @@ final class SparkTestSupport {
         return new StreamingConfig(
                 "local[2]", "localhost:29092", "vehicle.telemetry", "vehicle.alerts",
                 "latest", 50_000L, "localhost", "2181", "target/test-checkpoints",
-                5, 1, 120, 10, "target/no-such-model", 65.0, 0.80, 1L, 60L, 180);
+                5, 1, 120, 10, "target/no-such-model", 65.0, 0.28, 1L, 60L, 180);
     }
 }

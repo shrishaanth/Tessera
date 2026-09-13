@@ -237,7 +237,7 @@ produce plausible-looking wrong data rather than an exception:
   order partitioning produces.
 
 > Spark's tests need a Java 17 runtime — see **Java version** above. With the
-> toolchain configured, `mvn test` runs all 120 on any JDK.
+> toolchain configured, `mvn test` runs all 130 on any JDK.
 
 The dashboard has its own suite:
 
@@ -508,6 +508,34 @@ That is reported rather than buried, because the diagnosis is the interesting pa
 cycle. Seeing that confirmed is a check on the pipeline rather than a
 disappointment.
 
+### The probabilities are calibrated
+
+Training weights the rare incident windows about ten times more heavily, or the
+cheapest answer is "no incident" every time. The side effect is that the
+classifier's raw probabilities are inflated — it is fitted as though incidents
+were as common as quiet windows. Left alone, a RISKY driver showed "73%" when the
+real chance is about one in five.
+
+That weighting is exactly equivalent to training under a 50:50 prior, so it can be
+undone exactly: multiply the model's odds by the real ratio of incident to quiet
+windows. Training saves that ratio as `tessera-calibration.json` beside the model,
+and the streaming job applies it before anything is stored, alerted on or shown.
+Checked on the held-out split:
+
+| | predicted | actually happened |
+|---|---|---|
+| all windows, raw | 44.9% | 9.0% |
+| **all windows, corrected** | **9.0%** | **9.0%** |
+| SAFE, corrected | 4.6% | 4.4% |
+| AVERAGE, corrected | 10.6% | 10.2% |
+| RISKY, corrected | 22.0% | 23.3% |
+
+The Brier score falls from 0.215 to 0.077. The correction preserves order, so no
+ranking and no yes/no decision changes — only what the number claims. The model
+flags a window at a **12.9%** chance, and the probability alert fires at **28%**,
+about three times the base rate. A model saved without its calibration file is
+refused by the streaming job rather than scored with inflated percentages.
+
 ### Scoring the live stream
 
 The streaming job loads the persisted pipeline and scores every micro-batch,
@@ -516,7 +544,7 @@ alongside the rule-based score. Both are kept because they disagree usefully:
 
 ```
 VEH-001 window=17:50:00Z  hardBrakeCount=20  readingCount=90
-        cf_score:riskScore=100.000   cf_score:predictedLabel=0  cf_score:probability=0.310
+        cf_score:riskScore=100.000   cf_score:predictedLabel=0  cf_score:probability=0.043
 ```
 
 The rule sees 20 hard brakes in 90 readings and saturates; the model, which was

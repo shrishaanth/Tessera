@@ -80,13 +80,14 @@ public record StreamingConfig(
                 envInt("TESSERA_TRIGGER_SECONDS", 10),
                 envString("TESSERA_MODEL_PATH", "/data/model"),
                 envDouble("TESSERA_ALERT_SCORE_THRESHOLD", 65.0),
-                // Deliberately well above the model's own decision threshold. The
-                // model flags about one window in six to reach its measured recall,
-                // which is the right trade for a dashboard colour but far too noisy
-                // for a notification. An alert should fire only where the model is
-                // unusually sure, not merely past the point where positive beats
-                // negative.
-                envDouble("TESSERA_ALERT_PROBABILITY_THRESHOLD", 0.80),
+                // A true chance of an incident, not the classifier's raw output: the
+                // stored probability is calibrated. 28% is about three times the base
+                // rate of one window in eleven, and well above the 13% at which the
+                // model flags a window for the dashboard. Flagging one window in six
+                // is the right trade for a colour, far too noisy for a notification.
+                // It is the same cutoff the old raw 0.80 expressed, restated in units
+                // that mean what they say.
+                envDouble("TESSERA_ALERT_PROBABILITY_THRESHOLD", 0.28),
                 envLong("TESSERA_ALERT_INCIDENT_FLOOR", 1L),
                 // One minute of telemetry at the default tick rate. The newest
                 // window is also the emptiest one, and a rate computed over a

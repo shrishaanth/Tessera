@@ -260,6 +260,9 @@ services:
   reporting-api:
     image: eclipse-temurin:17-jre
     profiles: ["pipeline"]
+    # Without this, restarting Docker Desktop brings Kafka and HBase back but leaves
+    # the dashboard exited, and localhost:8090 simply stops answering.
+    restart: unless-stopped
     depends_on:
       kafka:
         condition: service_healthy

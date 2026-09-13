@@ -6,12 +6,15 @@ import java.util.Optional;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.spark.ml.PipelineModel;
+import org.apache.spark.sql.Column;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.tessera.risk.common.model.ModelCalibration;
+import com.tessera.risk.common.spark.CalibratedProbability;
 import com.tessera.risk.common.spark.FeatureSchema;
 import com.tessera.risk.common.spark.FeatureVector;
 
@@ -39,18 +42,28 @@ import static org.apache.spark.sql.functions.col;
  * <p>The decision threshold travels inside the model too — training baked it into
  * the classifier's {@code thresholds} parameter — so the cutoff applied here is the
  * one whose precision and recall were actually measured.
+ *
+ * <h2>What the stored probability means</h2>
+ * The classifier's own probability is inflated by the class weighting used in
+ * training, and would read as roughly three times the real chance of an incident.
+ * It is corrected with the {@link ModelCalibration} saved beside the model before
+ * anything stores, alerts on or displays it, so {@link #POSITIVE_PROBABILITY} is a
+ * true chance. The predicted label is not touched: the correction preserves order,
+ * and the decision was measured on the raw scale.
  */
 public final class RiskModel {
 
     private static final Logger log = LoggerFactory.getLogger(RiskModel.class);
 
-    /** Probability of the positive class, flattened out of the probability vector. */
+    /** True chance of an incident in the next window, after calibration. */
     public static final String POSITIVE_PROBABILITY = "positiveProbability";
 
     private final PipelineModel model;
+    private final ModelCalibration calibration;
 
-    private RiskModel(PipelineModel model) {
+    private RiskModel(PipelineModel model, ModelCalibration calibration) {
         this.model = model;
+        this.calibration = calibration;
     }
 
     /**
@@ -75,9 +88,40 @@ public final class RiskModel {
             return Optional.empty();
         }
 
+        // A model without its calibration is one trained before the correction
+        // existed. Scoring with it would put inflated percentages back on the
+        // dashboard, so it is refused rather than used: the job falls back to the
+        // rule-based score and says why.
+        Optional<ModelCalibration> calibration = readCalibration(spark, path);
+        if (calibration.isEmpty()) {
+            log.warn("Model at {} has no {}; it predates probability calibration and its "
+                    + "percentages would be inflated. Scoring by rules only; retrain with "
+                    + "the ml-training job.", path, ModelCalibration.FILE_NAME);
+            return Optional.empty();
+        }
+
         PipelineModel loaded = PipelineModel.load(path);
-        log.info("Loaded risk model from {}", path);
-        return Optional.of(new RiskModel(loaded));
+        ModelCalibration cal = calibration.get();
+        log.info("Loaded risk model from {} ({}; flags windows at a {}% chance of an incident)",
+                path, cal.model(), String.format("%.1f", 100 * cal.correctedThreshold()));
+        return Optional.of(new RiskModel(loaded, cal));
+    }
+
+    private static Optional<ModelCalibration> readCalibration(SparkSession spark, String modelPath) {
+        try {
+            Path file = new Path(modelPath, ModelCalibration.FILE_NAME);
+            FileSystem fs = file.getFileSystem(spark.sparkContext().hadoopConfiguration());
+            if (!fs.exists(file)) {
+                return Optional.empty();
+            }
+            try (java.io.InputStream in = fs.open(file)) {
+                return Optional.of(ModelCalibration.fromJson(
+                        new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)));
+            }
+        } catch (IOException | IllegalArgumentException e) {
+            log.warn("Could not read model calibration at {}: {}", modelPath, e.getMessage());
+            return Optional.empty();
+        }
     }
 
     /**
@@ -88,9 +132,9 @@ public final class RiskModel {
      */
     public Dataset<Row> score(Dataset<Row> vehicleWindows) {
         Dataset<Row> withFeatures = FeatureVector.withFeatures(vehicleWindows);
+        // Java gets no default argument for the element type.
+        Column raw = vector_to_array(col(FeatureSchema.PROBABILITY), "float64").getItem(1);
         return model.transform(withFeatures)
-                .withColumn(POSITIVE_PROBABILITY,
-                        // Java gets no default argument for the element type.
-                        vector_to_array(col(FeatureSchema.PROBABILITY), "float64").getItem(1));
+                .withColumn(POSITIVE_PROBABILITY, CalibratedProbability.of(raw, calibration));
     }
 }

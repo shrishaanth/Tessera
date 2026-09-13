@@ -83,7 +83,7 @@ export function VehicleDetail({ vehicle, onClose }: Props) {
           <dd className="strong">{Math.round(vehicle.riskScore)}</dd>
         </div>
         <div>
-          <dt>Model</dt>
+          <dt title="Model's calibrated chance of an incident in the next five minutes">Incident chance</dt>
           {/* Absence is shown as a dash and named, rather than rendered as zero. */}
           <dd>{formatProbability(vehicle.probability, vehicle.modelScored)}</dd>
         </div>

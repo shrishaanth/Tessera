@@ -21,13 +21,19 @@ import org.apache.spark.storage.StorageLevel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.tessera.risk.common.model.ModelCalibration;
 import com.tessera.risk.common.model.RiskTier;
+import com.tessera.risk.common.spark.CalibratedProbability;
 import com.tessera.risk.common.spark.FeatureSchema;
 
 import static org.apache.spark.ml.functions.vector_to_array;
+import static org.apache.spark.sql.functions.avg;
 import static org.apache.spark.sql.functions.col;
+import static org.apache.spark.sql.functions.floor;
+import static org.apache.spark.sql.functions.least;
 import static org.apache.spark.sql.functions.lit;
 import static org.apache.spark.sql.functions.not;
+import static org.apache.spark.sql.functions.pow;
 import static org.apache.spark.sql.functions.sum;
 import static org.apache.spark.sql.functions.when;
 
@@ -129,6 +135,15 @@ public final class TrainingMain {
         log.info("persisting {} (threshold {}) to {}",
                 best.name(), String.format("%.2f", best.threshold()), config.modelPath());
         best.model().write().overwrite().save(config.modelPath());
+
+        // The model's probabilities are inflated by the class weighting. Record the
+        // prior it was trained under, next to the model, so the streaming job can
+        // turn them back into true chances — and check here that doing so works.
+        ModelCalibration calibration = new ModelCalibration(best.name(), best.threshold(),
+                split.trainPositives(), split.trainRows() - split.trainPositives());
+        writeText(spark, config.modelPath() + "/" + ModelCalibration.FILE_NAME,
+                calibration.toJson());
+        reportCalibration(best.model(), test, calibration);
 
         train.unpersist();
         test.unpersist();
@@ -423,6 +438,83 @@ public final class TrainingMain {
                             FeatureSchema.FEATURE_COLUMNS[index], importances[index]));
                 }
             }
+        }
+    }
+
+    /**
+     * Check that the corrected probabilities mean what they say.
+     *
+     * <p>Held-out windows are grouped by their corrected probability and each
+     * group's average prediction is set beside the fraction that really was followed
+     * by an incident. If the correction is right the two columns agree; if the
+     * dashboard's percentages were still inflated, the predicted column would run
+     * several times higher than the observed one. The raw and corrected Brier scores
+     * summarise the same thing in one number each — lower is better.
+     */
+    private static void reportCalibration(PipelineModel model, Dataset<Row> test,
+                                          ModelCalibration calibration) {
+        Column raw = col(POSITIVE_PROBABILITY);
+        Column label = col(FeatureSchema.LABEL);
+        Dataset<Row> scored = scored(model.transform(test))
+                .withColumn("corrected", CalibratedProbability.of(raw, calibration))
+                .persist(StorageLevel.MEMORY_AND_DISK());
+
+        Row summary = scored.agg(
+                avg(raw).as("meanRaw"),
+                avg(col("corrected")).as("meanCorrected"),
+                avg(label).as("observed"),
+                avg(pow(raw.minus(label), 2)).as("brierRaw"),
+                avg(pow(col("corrected").minus(label), 2)).as("brierCorrected")).first();
+
+        log.info("");
+        log.info("probability calibration on the held-out split");
+        log.info(String.format("  prior odds %.4f (%,d incident : %,d quiet training windows)",
+                calibration.priorOdds(), calibration.trainPositives(), calibration.trainNegatives()));
+        log.info(String.format("  decision threshold: raw %.2f = a %.1f%% chance of an incident",
+                calibration.decisionThreshold(), 100 * calibration.correctedThreshold()));
+        log.info(String.format("  mean predicted: raw %.1f%%, corrected %.1f%%, observed %.1f%%",
+                100 * summary.getDouble(0), 100 * summary.getDouble(1), 100 * summary.getDouble(2)));
+        log.info(String.format("  Brier score: raw %.4f, corrected %.4f",
+                summary.getDouble(3), summary.getDouble(4)));
+
+        log.info("  corrected band     windows   predicted   observed");
+        List<Row> bands = scored
+                .withColumn("band", least(lit(0.5), floor(col("corrected").multiply(20)).divide(20)))
+                .groupBy("band")
+                // Spark's count, qualified: this class has its own count(Column)
+                // helper for confusion matrices, which expects a boolean condition.
+                .agg(org.apache.spark.sql.functions.count(lit(1)).as("n"),
+                        avg(col("corrected")).as("p"), avg(label).as("o"))
+                .orderBy("band")
+                .collectAsList();
+        for (Row band : bands) {
+            double from = band.getDouble(0);
+            String label0 = from >= 0.5 ? "50%+" : String.format("%2.0f-%2.0f%%", 100 * from, 100 * from + 5);
+            log.info(String.format("  %-16s %,9d   %8.1f%%   %7.1f%%",
+                    label0, band.getLong(1), 100 * band.getDouble(2), 100 * band.getDouble(3)));
+        }
+
+        List<Row> tiers = scored.groupBy(FeatureSchema.RISK_TIER_ORDINAL)
+                .agg(avg(raw).as("r"), avg(col("corrected")).as("c"), avg(label).as("o"))
+                .orderBy(FeatureSchema.RISK_TIER_ORDINAL)
+                .collectAsList();
+        log.info("  tier     raw   corrected   observed");
+        for (Row tier : tiers) {
+            log.info(String.format("  %-7s %5.1f%%   %7.1f%%   %7.1f%%",
+                    RiskTier.values()[(int) tier.getDouble(0)], 100 * tier.getDouble(1),
+                    100 * tier.getDouble(2), 100 * tier.getDouble(3)));
+        }
+        scored.unpersist();
+    }
+
+    /** Write a small text file through Hadoop, so it lands wherever the model does. */
+    private static void writeText(SparkSession spark, String location, String content)
+            throws java.io.IOException {
+        org.apache.hadoop.fs.Path path = new org.apache.hadoop.fs.Path(location);
+        org.apache.hadoop.fs.FileSystem fs =
+                path.getFileSystem(spark.sparkContext().hadoopConfiguration());
+        try (org.apache.hadoop.fs.FSDataOutputStream out = fs.create(path, true)) {
+            out.write(content.getBytes(java.nio.charset.StandardCharsets.UTF_8));
         }
     }
 

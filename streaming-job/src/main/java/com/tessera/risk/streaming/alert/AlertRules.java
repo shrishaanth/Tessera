@@ -151,7 +151,7 @@ public final class AlertRules {
         if (modelProbability.isPresent()
                 && modelProbability.getAsDouble() >= config.alertProbabilityThreshold()) {
             return String.format(Locale.ROOT,
-                    "Model predicts an incident with %.0f%% confidence "
+                    "Model: %.0f%% chance of an incident in the next window "
                             + "(%d hard brake%s in %d readings)",
                     100.0 * modelProbability.getAsDouble(),
                     hardBrakes, hardBrakes == 1 ? "" : "s", readings);

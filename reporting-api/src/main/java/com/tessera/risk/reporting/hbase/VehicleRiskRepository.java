@@ -67,22 +67,28 @@ public class VehicleRiskRepository {
      * risk score is a rate, that window's score is computed over almost no evidence,
      * and it swings between 0 and 100 as windows roll over.
      *
-     * <p>Every one of those windows already contains the vehicle's latest reading;
-     * they differ only in how far back they reach. So the fullest is not staler than
-     * the newest — it is the same moment seen over a longer run, and it is the one
-     * the score was calibrated against. Six rows rather than one is a trivially
-     * larger scan for a number that stops jumping.
+     * <p>Every <em>open</em> window already contains the vehicle's latest reading;
+     * they differ only in how far back they reach, so among those the fullest is
+     * the same moment seen over a longer run.
      *
-     * <p>This is the same reasoning the streaming job's alert rules use, and for the
-     * same reason.
+     * <h2>But only among open windows</h2>
+     * A window that has already ended stops receiving readings, and it is also the
+     * fullest of all — so choosing by reading count alone picks it, and the
+     * dashboard shows each vehicle where it was up to a minute ago, with markers
+     * that jump once a minute instead of moving. Candidates are therefore first
+     * narrowed to the windows holding the newest reading, which is exactly the set
+     * still being written to, and only then ranked by how much evidence they hold.
      */
     public Optional<VehicleRisk> latest(String vehicleId, Map<String, String> driverNames)
             throws IOException {
         List<VehicleRisk> candidates = history(vehicleId, CANDIDATE_WINDOWS, driverNames);
-        return candidates.stream().max(
-                // Most readings wins; the newer window breaks a tie, which happens
-                // when a vehicle has been reporting for less than one full window.
-                Comparator.comparingLong(VehicleRisk::readingCount)
+        long newestReading = candidates.stream()
+                .mapToLong(VehicleRisk::lastReadingTs).max().orElse(Long.MIN_VALUE);
+        return candidates.stream()
+                .filter(window -> window.lastReadingTs() == newestReading)
+                .max(Comparator.comparingLong(VehicleRisk::readingCount)
+                        // The newer window breaks a tie, which happens when a vehicle
+                        // has been reporting for less than one full window.
                         .thenComparingLong(VehicleRisk::windowStart));
     }
 

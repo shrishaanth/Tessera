@@ -31,7 +31,7 @@ export function FleetTable({ vehicles, selectedId, onSelect }: Props) {
               <th scope="col">Vehicle</th>
               <th scope="col">Driver</th>
               <th scope="col" className="numeric">Risk</th>
-              <th scope="col" className="numeric">Model</th>
+              <th scope="col" className="numeric" title="Model's calibrated chance of an incident in the next five minutes">Chance</th>
               <th scope="col" className="numeric">Brakes</th>
             </tr>
           </thead>
