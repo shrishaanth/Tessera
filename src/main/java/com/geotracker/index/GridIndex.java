@@ -63,7 +63,10 @@ public class GridIndex implements SpatialIndex {
         for (int i = minCx; i <= maxCx; i++) {
             for (int j = minCy; j <= maxCy; j++) {
                 for (Entry e : grid[i][j]) {
-                    result.add(e.vehicleId());
+                    // Boundary cells also hold points just outside the query box.
+                    if (bbox.contains(e.x(), e.y())) {
+                        result.add(e.vehicleId());
+                    }
                 }
             }
         }
@@ -77,18 +80,26 @@ public class GridIndex implements SpatialIndex {
         double bestY = 0;
         double bestDist = Double.MAX_VALUE;
 
-        int cx = (int) ((x - minX) / cellWidth);
-        int cy = (int) ((y - minY) / cellHeight);
+        int cx = Math.max(0, Math.min(cellX - 1, (int) Math.floor((x - minX) / cellWidth)));
+        int cy = Math.max(0, Math.min(cellY - 1, (int) Math.floor((y - minY) / cellHeight)));
         int maxRadius = Math.max(cellX, cellY);
+        double minCell = Math.min(cellWidth, cellHeight);
 
-        for (int radius = 0; radius < maxRadius; radius++) {
+        for (int radius = 0; radius <= maxRadius; radius++) {
+            // Every point in ring r is at least (r - 1) cells away, so once that bound exceeds the best
+            // distance found so far no further ring can contain a closer point.
+            if (bestId != -1) {
+                double ringLowerBound = (radius - 1) * minCell;
+                if (ringLowerBound > 0 && ringLowerBound * ringLowerBound > bestDist) break;
+            }
             int iMin = Math.max(0, cx - radius);
             int iMax = Math.min(cellX - 1, cx + radius);
             int jMin = Math.max(0, cy - radius);
             int jMax = Math.min(cellY - 1, cy + radius);
             for (int i = iMin; i <= iMax; i++) {
                 for (int j = jMin; j <= jMax; j++) {
-                    if (radius > 0 && (i > iMin && i < iMax && j > jMin && j < jMax)) continue;
+                    // Only the ring's border cells: the interior was scanned at smaller radii.
+                    if (Math.max(Math.abs(i - cx), Math.abs(j - cy)) != radius) continue;
                     for (Entry e : grid[i][j]) {
                         double dx = e.x() - x;
                         double dy = e.y() - y;
@@ -102,10 +113,7 @@ public class GridIndex implements SpatialIndex {
                     }
                 }
             }
-            if (bestId != -1) {
-                return new NearestResult(bestId, bestX, bestY, Math.sqrt(bestDist));
-            }
         }
-        return null;
+        return bestId == -1 ? null : new NearestResult(bestId, bestX, bestY, Math.sqrt(bestDist));
     }
 }

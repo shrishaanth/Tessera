@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tessera Map</title>
+<script>
+    // JavaFX WebView's WebKit does not composite CSS 3D transforms reliably: with Leaflet's default
+    // translate3d tile positioning only some tiles are painted and the rest of the map stays blank.
+    // These are Leaflet's documented switches for 2D positioning and mouse-only input.
+    window.L_DISABLE_3D = true;
+    window.L_NO_TOUCH = true;
+</script>
+<link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+<link rel="stylesheet" href="tessera-map.css">
+<script src="vendor/leaflet/leaflet.js"></script>
+</head>
+<body>
+<div id="map"></div>
+<div id="tile-banner" class="tile-banner" hidden>
+    <div class="tile-banner-text">
+        <strong>Map tiles unavailable.</strong>
+        <span id="tile-banner-detail">Showing the bundled road network instead.</span>
+    </div>
+    <button id="tile-banner-retry" type="button">Retry</button>
+</div>
+<script src="tessera-map.js"></script>
+</body>
+</html>

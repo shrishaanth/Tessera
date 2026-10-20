@@ -23,6 +23,9 @@ public class Config {
     public static final double AREA_MAX_LNG = -122.330;
     public static final String AREA_NAME = "Gas Works Park, Seattle, WA";
     public static final String ROADGRAPH_RESOURCE = "/roadgraph/osm-roadgraph.json";
+    /** Central Seattle drivable road network used by the desktop simulation (see scripts/build_city_roadgraph.py). */
+    public static final String CITY_ROADGRAPH_RESOURCE = "/roadgraph/seattle-central-roadgraph.json.gz";
+    public static final String CITY_AREA_NAME = "Central Seattle, WA";
     public static final String GRID_ROADGRAPH_RESOURCE = "/roadgraph/grid_roadgraph.json";
     public static final String TRAJECTORY_RESOURCE = "/data/vehicle_trajectories.csv";
 }

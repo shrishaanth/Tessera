@@ -4,7 +4,9 @@
 
 Tessera is a real-time geospatial tracking engine. Vehicles stream position updates to a Netty TCP server that uses a binary protocol and sharded ingestion. Positions are held in memory in a Copy-On-Write Quadtree, with a persistent HAMT for fast vehicle lookup. A live Leaflet map of an OpenStreetMap road graph shows the fleet, raises ENTER/EXIT alerts through ray-casting geofences, and computes A* shortest routes. A built-in benchmark harness compares naive, grid and quadtree indexes on throughput and latency.
 
-**Stack:** Java 17, Netty 4, Javalin, Leaflet and OpenStreetMap, Jackson, Maven, JUnit 5.
+The main way to use it is the **JavaFX desktop application** (`mvn javafx:run`): a fleet dashboard, a live street map, a vehicle table, routing, geofencing, spatial search, performance monitoring and settings, all driven by the same in-process backend. See [Desktop application](#desktop-application-recommended).
+
+**Stack:** Java 21, JavaFX (WebView), Netty 4, Javalin, Leaflet and OpenStreetMap, Jackson, Maven, JUnit 5.
 
 ---
 
@@ -82,7 +84,7 @@ A bounded circular buffer between the network thread and each indexer. When it i
 ### Copy-On-Write Quadtree (`index/CowQuadtree`, `QuadTreeNode`)
 - A region quadtree that splits a leaf into four children when it holds more than `QUADTREE_LEAF_CAPACITY` (32) points, up to a maximum depth of 20.
 - Operations: `insert`, `remove`, `update`, `rangeQuery(bbox)` and `nearest(x, y)`.
-- It keeps a `workingRoot` (touched only by the writer) and a `publishedRoot` (a `volatile` reference read by everyone else). `publish()` replaces the published root with a copy of the working tree, so a reader that is in the middle of a query keeps seeing a consistent tree even while the writer carries on.
+- It keeps a `workingRoot` (touched only by the writer) and a `publishedRoot` (a `volatile` reference read by everyone else). Nodes are immutable: `insert` and `remove` copy only the path from the root to the changed leaf. `publish()` therefore just hands the current working root to readers, and a reader in the middle of a query keeps seeing a consistent tree while the writer carries on. (Earlier versions deep-copied the whole tree on every publish; with 10,000 vehicles that tripled ingest latency and dominated GC.)
 
 ### HAMT (`index/HamtIndex`)
 A hash array mapped trie with branching factor 32 (5 bits per level), keyed by vehicle id. It answers "where is vehicle X right now?" without scanning the quadtree. The indexer uses it to find the old position it must remove from the quadtree on every update, and the web layer uses it for vehicle detail lookups. It is published together with the quadtree as part of the same `SpatialSnapshot`, so both views of the world are consistent with each other.
@@ -133,10 +135,11 @@ Stated plainly so the numbers below are not over-read:
 
 - **Single node, in-memory only.** There is no persistence, replication or recovery; a restart loses all state.
 - **Simulated fleet.** Positions come from the built-in simulator, not real GPS devices. Benchmarks measure the index data structures, not network or end-to-end throughput.
-- **Small area.** The bundled road graph covers a few city blocks (Gas Works Park, Seattle).
+- **Area.** The desktop simulation covers central Seattle (about 9 × 10.6 km, Ballard/Interbay to Montlake/University District, Pioneer Square to Green Lake), not the whole city. The web demo still uses the original few-block graph around Gas Works Park.
 - **Benchmark scope.** It measures update throughput and range-query latency for 1,000 vehicles and 10,000 operations, on one machine. Results vary by machine and JVM warm-up.
-- **Snapshot cost.** Publishing copies the tree, which is fine at this scale but would need a persistent (structure-sharing) tree for much larger fleets.
-- **Web map.** The map is Leaflet in a browser and needs internet access for the tile background.
+- **Snapshot cost.** Publishing is O(1) (structure sharing), but every update still allocates a new root-to-leaf path, so very large fleets put steady pressure on the garbage collector.
+- **Map tiles.** Both the desktop app and the web demo draw OpenStreetMap tiles, which need internet access. The desktop app falls back to the bundled road network when tiles fail and says so on the map.
+- **Generated trips.** Desktop-simulation vehicles drive shortest-path trips between random road points 1.5–7 km apart, at 85–100% of the posted limit, on motor-vehicle roads only, obeying one-way streets. There is no congestion, signals, turn delay or acceleration: this is deterministic test traffic, not recorded or realistic traffic.
 
 ## Features
 
@@ -144,6 +147,7 @@ Stated plainly so the numbers below are not over-read:
 - **Persistent Hash Map**: HAMT for O(1) vehicle lookups
 - **TCP Ingestion**: Netty 4.x server with binary protocol and sharding
 - **Deterministic Simulator**: Reproducible vehicle movement for benchmarking
+- **Desktop application**: JavaFX app with an embedded Leaflet street map (OpenStreetMap tiles), a live fleet of 20 to 10,000 vehicles driving trips across a central-Seattle road network (58,423 nodes, about 1,200 km of road), vehicle table, A* routing with a Dijkstra cross-check, geofence drawing (plus a labelled demo that routes vehicles into a zone), verified spatial search and live performance charts
 - **Live Web Map**: Javalin + Leaflet real-time map with WebSocket positions, route requests, and live geofence alerts
 - **Geofencing**: Ray-casting point-in-polygon with ENTER/EXIT alerts
 - **Routing**: A* shortest path on grid and OSM-derived road graphs
@@ -151,8 +155,8 @@ Stated plainly so the numbers below are not over-read:
 
 ## Requirements
 
-- JDK 17+
-- Maven 3.8+ (optional — direct `javac` works too)
+- JDK 21+ (tested with JDK 21 and JDK 27; Maven picks a matching JavaFX version automatically)
+- Maven 3.8+
 - Python 3.8+ (only for the one-off OSM data-prep script)
 
 ## Build
@@ -163,7 +167,17 @@ mvn clean compile
 
 ## Run
 
-### Live Web Map Demo (default)
+### Desktop application (recommended)
+
+```bash
+mvn javafx:run
+```
+
+or `./run.sh`, which checks the toolchain and compiles first. The app opens on the Live Map: press **Start** to run the simulation, choose a fleet size (20 / 100 / 1,000 / 10,000) and a playback speed in the toolbar, and click a vehicle for details. `Cmd+1` … `Cmd+8` switch pages. Map tiles come from tile.openstreetmap.org (internet needed); the rest works offline.
+
+On JDK 24 and later, `javafx.web` needs the `jdk.jsobject` module, which is no longer part of the JDK. The `jfx-modern` Maven profile (activated automatically on JDK 24+) switches to JavaFX 25.0.2, which ships it. The JavaFX plugin runs the app on the class path through `com.geotracker.TesseraLauncher`. JavaFX logs one "Unsupported JavaFX configuration" warning about this at startup; it is expected and harmless.
+
+### Live Web Map Demo
 
 The default demo starts the Netty ingestion server on port 9090, runs a vehicle simulator with 200 vehicles on a real OSM road graph, and serves a live Leaflet map on port 8081.
 
@@ -233,9 +247,10 @@ src/main/java/com/geotracker/
 └── web/             # Javalin WebServer (REST + WebSocket)
 src/main/resources/
 ├── public/          # Leaflet frontend (index.html, app.js)
-└── roadgraph/       # OSM-derived road graph JSON (osm-roadgraph.json)
+└── roadgraph/       # OSM-derived road graphs: seattle-central-roadgraph.json.gz (desktop app), osm-roadgraph.json (web demo)
 scripts/
-└── fetch_osm.py     # One-off Overpass API data-prep script
+├── build_city_roadgraph.py  # Builds the central-Seattle drivable road graph from Overpass
+└── fetch_osm.py             # Original one-off script for the small Gas Works graph
 ```
 
 ## Configuration
@@ -263,7 +278,18 @@ Key settings in `Config.java`:
 
 ## OSM Data Preparation
 
-The OSM road graph is fetched once using the Overpass API and serialized to `src/main/resources/roadgraph/osm-roadgraph.json`. It is not fetched at runtime.
+Road graphs are fetched once from the Overpass API and stored as resources; nothing is fetched at runtime.
+
+**Desktop simulation:** `src/main/resources/roadgraph/seattle-central-roadgraph.json.gz`, built by
+
+```bash
+python3 scripts/build_city_roadgraph.py                        # fetches from Overpass
+python3 scripts/build_city_roadgraph.py --input overpass.json  # or from a saved response
+```
+
+It keeps motor-vehicle roads only (motorway to residential; no footways, paths, cycleways, steps, service roads or private/no-access roads), applies one-way rules, drops reversible lanes, and keeps the largest strongly connected component so every destination is reachable. Area, filter, OSM timestamp, licence and statistics are stored in the file. The bundled extract is from OSM data of 2026-10-16.
+
+**Web demo:** `src/main/resources/roadgraph/osm-roadgraph.json`, from `scripts/fetch_osm.py`. This is a few blocks around Gas Works Park and includes footpaths.
 
 To refresh the graph for a different area, edit the bounding box in `scripts/fetch_osm.py` and run:
 

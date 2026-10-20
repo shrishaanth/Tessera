@@ -1,14 +1,26 @@
 package com.geotracker.routing;
 
+import com.fasterxml.jackson.core.JsonFactory;
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.core.JsonToken;
 import com.fasterxml.jackson.databind.ObjectMapper;
+
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.*;
 
 public class RoadGraph {
     public record Node(long id, double x, double y) {}
-    public record Edge(long fromId, long toId, double weight) {}
+    /** Directed edge. {@code speedMps} is the posted speed limit in m/s, or 0 when unknown. */
+    public record Edge(long fromId, long toId, double weight, double speedMps) {
+        public Edge(long fromId, long toId, double weight) {
+            this(fromId, toId, weight, 0.0);
+        }
+    }
 
     private final Map<Long, Node> nodes;
     private final Map<Long, List<Edge>> adjacency;
+    private Boolean geoGraph; // cached isGeoGraph(); reset when nodes change
 
     public RoadGraph() {
         this.nodes = new HashMap<>();
@@ -16,6 +28,7 @@ public class RoadGraph {
     }
 
     public void addNode(Node node) {
+        geoGraph = null;
         nodes.put(node.id(), node);
         adjacency.putIfAbsent(node.id(), new ArrayList<>());
     }
@@ -39,10 +52,10 @@ public class RoadGraph {
     public Node findNearestNode(double x, double y) {
         Node best = null;
         double bestDist = Double.MAX_VALUE;
-        boolean isLatLng = (x >= -180 && x <= 180 && y >= -90 && y <= 90);
+        boolean isGeo = isGeoGraph();
         for (Node node : nodes.values()) {
             double d;
-            if (isLatLng) {
+            if (isGeo) {
                 d = GeoUtils.haversineMeters(y, x, node.y(), node.x());
             } else {
                 double dx = node.x() - x;
@@ -54,7 +67,77 @@ public class RoadGraph {
                 best = node;
             }
         }
-        return bestDist <= 100 ? best : null;
+        double maxSnap = isGeo ? 500.0 : 100.0;
+        return bestDist <= maxSnap ? best : null;
+    }
+
+    public boolean isGeoGraph() {
+        Boolean cached = geoGraph;
+        if (cached != null) return cached;
+        boolean geo = !nodes.isEmpty();
+        for (Node node : nodes.values()) {
+            if (node.x() < -180 || node.x() > 180 || node.y() < -90 || node.y() > 90) {
+                geo = false;
+                break;
+            }
+        }
+        geoGraph = geo;
+        return geo;
+    }
+
+    /**
+     * Streaming loader for large graphs ({@code {"nodes":[{"id","x","y"}...], "edges":[{"from","to","weight",
+     * "speed"?}...]}}; other top-level fields are ignored). Unlike {@link #loadFromJson(String)} it does not
+     * build an intermediate object tree, so a 100,000-edge graph loads quickly with little garbage.
+     */
+    public static RoadGraph loadFromJson(InputStream in) throws IOException {
+        RoadGraph graph = new RoadGraph();
+        try (JsonParser p = new JsonFactory().createParser(in)) {
+            if (p.nextToken() != JsonToken.START_OBJECT) throw new IOException("Road graph: expected a JSON object");
+            while (p.nextToken() == JsonToken.FIELD_NAME) {
+                String section = p.currentName();
+                JsonToken t = p.nextToken();
+                if ("nodes".equals(section) && t == JsonToken.START_ARRAY) {
+                    while (p.nextToken() == JsonToken.START_OBJECT) {
+                        long id = 0;
+                        double x = Double.NaN, y = Double.NaN;
+                        while (p.nextToken() == JsonToken.FIELD_NAME) {
+                            String f = p.currentName();
+                            p.nextToken();
+                            switch (f) {
+                                case "id" -> id = p.getLongValue();
+                                case "x" -> x = p.getDoubleValue();
+                                case "y" -> y = p.getDoubleValue();
+                                default -> p.skipChildren();
+                            }
+                        }
+                        if (Double.isNaN(x) || Double.isNaN(y)) throw new IOException("Road graph: node " + id + " lacks x/y");
+                        graph.addNode(new Node(id, x, y));
+                    }
+                } else if ("edges".equals(section) && t == JsonToken.START_ARRAY) {
+                    while (p.nextToken() == JsonToken.START_OBJECT) {
+                        long from = 0, to = 0;
+                        double weight = Double.NaN, speed = 0;
+                        while (p.nextToken() == JsonToken.FIELD_NAME) {
+                            String f = p.currentName();
+                            p.nextToken();
+                            switch (f) {
+                                case "from" -> from = p.getLongValue();
+                                case "to" -> to = p.getLongValue();
+                                case "weight" -> weight = p.getDoubleValue();
+                                case "speed" -> speed = p.getDoubleValue();
+                                default -> p.skipChildren();
+                            }
+                        }
+                        if (Double.isNaN(weight)) throw new IOException("Road graph: edge " + from + "->" + to + " lacks a weight");
+                        graph.addEdge(new Edge(from, to, weight, speed));
+                    }
+                } else {
+                    p.skipChildren();
+                }
+            }
+        }
+        return graph;
     }
 
     public static RoadGridBuilder builder() {

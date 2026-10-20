@@ -58,27 +58,21 @@ public class HamtIndex {
         return null;
     }
 
+    /**
+     * Publication point for readers. Nodes are immutable (put copies the path it changes), so the current
+     * root is already a consistent snapshot and nothing needs to be copied.
+     */
     public synchronized void publish() {
-        root = deepCopy(root);
+        // no-op: see above
+    }
+
+    /** Drops every entry. Nodes are immutable, so snapshots taken earlier are unaffected. */
+    public synchronized void clear() {
+        root = emptyRoot;
     }
 
     public HamtIndex snapshot() {
         return new HamtIndex(root);
-    }
-
-    private Node deepCopy(Node node) {
-        if (node instanceof LeafNode leaf) {
-            java.util.List<Entry> entries = new java.util.ArrayList<>(java.util.Arrays.asList(leaf.entries()));
-            return new LeafNode(entries.toArray(new Entry[0]));
-        }
-        BranchNode branch = (BranchNode) node;
-        Node[] children = new Node[BRANCHING_FACTOR];
-        for (int i = 0; i < BRANCHING_FACTOR; i++) {
-            if (branch.children()[i] != null) {
-                children[i] = deepCopy(branch.children()[i]);
-            }
-        }
-        return new BranchNode(children);
     }
 
     public int size() {

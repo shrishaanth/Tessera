@@ -84,6 +84,28 @@ public class GeofenceEngine {
         return userZones.get(zoneId);
     }
 
+    /** Built-in zones supplied at construction time (monitored for every vehicle). */
+    public List<Zone> getBuiltInZones() {
+        return List.copyOf(zones);
+    }
+
+    /** Number of vehicles inside the zone as of the most recent {@link #check()}. */
+    public int getOccupancy(String zoneId) {
+        Set<Long> inside = previousContained.get(zoneId);
+        return inside == null ? 0 : inside.size();
+    }
+
+    /**
+     * Forgets which vehicles were inside each zone and the per-vehicle event cooldowns, so that a fresh
+     * simulation run does not report EXIT events for vehicles from the previous run.
+     */
+    public void resetState() {
+        for (String zoneId : previousContained.keySet()) {
+            previousContained.put(zoneId, new HashSet<>());
+        }
+        lastEventTime.clear();
+    }
+
     public List<ZoneEvent> check() {
         List<ZoneEvent> events = new ArrayList<>();
         for (Zone zone : zones) {

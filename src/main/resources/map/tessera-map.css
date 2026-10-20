@@ -1,0 +1,93 @@
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; }
+body {
+    background: #f2efe9;
+    font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", "Segoe UI", Roboto, sans-serif;
+}
+/* OpenStreetMap land colour, so tiles that are still loading blend in instead of flashing grey. */
+#map { position: absolute; inset: 0; width: 100%; height: 100%; background: #f2efe9; outline: none; }
+#map.offline-basemap { background: #eef0f3; }
+#map.pick-mode, #map.pick-mode .leaflet-interactive { cursor: crosshair; }
+#map.vehicle-hover { cursor: pointer; }
+
+.tessera-vehicle-canvas { pointer-events: none; }
+/* Tile levels are scaled with a 2D transform during zoom changes (see tessera-map.js). */
+.leaflet-tile-container { transform-origin: 0 0; }
+
+/* Controls: white cards with soft shadows, matching the desktop UI. */
+.leaflet-bar {
+    border: none !important;
+    border-radius: 8px !important;
+    box-shadow: 0 1px 2px rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15) !important;
+    overflow: hidden;
+}
+.leaflet-bar a, .leaflet-bar button {
+    display: flex; align-items: center; justify-content: center;
+    width: 36px !important; height: 36px !important; line-height: 36px !important;
+    background: #ffffff; color: #3c4043; border: none; border-bottom: 1px solid #eceff1 !important;
+    font-size: 20px; font-weight: 400; cursor: pointer; padding: 0;
+}
+.leaflet-bar a:last-child, .leaflet-bar button:last-child { border-bottom: none !important; }
+.leaflet-bar a:hover, .leaflet-bar button:hover { background: #f1f3f4; color: #202124; }
+.leaflet-bar a.leaflet-disabled { color: #bdc1c6; background: #ffffff; }
+.tessera-view-control button svg { width: 18px; height: 18px; fill: #3c4043; }
+
+.leaflet-control-attribution {
+    background: rgba(255, 255, 255, 0.88) !important;
+    color: #5f6368 !important;
+    font-size: 10.5px !important;
+    padding: 1px 6px !important;
+    border-top-left-radius: 4px;
+}
+.leaflet-control-attribution a { color: #1a73e8 !important; text-decoration: none; }
+.leaflet-control-scale-line {
+    background: rgba(255, 255, 255, 0.85);
+    border-color: #5f6368;
+    color: #3c4043;
+    font-size: 10.5px;
+}
+
+.zone-label {
+    background: rgba(255, 255, 255, 0.85);
+    border: none;
+    border-radius: 10px;
+    box-shadow: 0 1px 2px rgba(60, 64, 67, 0.3);
+    color: #202124;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    white-space: nowrap;
+}
+.zone-label:before { display: none; }
+
+.route-pin {
+    width: 26px; height: 26px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700; color: #ffffff;
+    border: 2px solid #ffffff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+.route-pin.origin { background: #188038; }
+.route-pin.destination { background: #d93025; }
+
+.draft-vertex-label { display: none; }
+
+.tile-banner {
+    /* Below the info pill that the desktop UI overlays at the top left. */
+    position: absolute; top: 58px; left: 50%; transform: translateX(-50%);
+    z-index: 1200;
+    display: flex; align-items: center; gap: 12px;
+    max-width: calc(100% - 140px);
+    background: #fef7e0; border: 1px solid #f9d77e; border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(60, 64, 67, 0.2);
+    padding: 8px 10px 8px 14px;
+    color: #202124; font-size: 12.5px; line-height: 1.35; font-weight: 500;
+}
+.tile-banner[hidden] { display: none; }
+.tile-banner strong { color: #202124; }
+.tile-banner button {
+    font-family: inherit;
+    flex: none; border: 1px solid #dadce0; background: #ffffff; color: #1a73e8;
+    border-radius: 6px; padding: 5px 12px; font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.tile-banner button:hover { background: #f8f9fa; }

@@ -11,11 +11,13 @@
     <description>Real-Time Geospatial Tracking Engine</description>
 
     <properties>
-        <maven.compiler.source>17</maven.compiler.source>
-        <maven.compiler.target>17</maven.compiler.target>
+        <maven.compiler.release>21</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <junit.version>5.10.0</junit.version>
         <jmh.version>1.37</jmh.version>
+        <!-- JavaFX 21 relies on the JDK's jdk.jsobject module, which was removed in JDK 24.
+             The jfx-modern profile below switches to a JavaFX release that ships it. -->
+        <javafx.version>21.0.2</javafx.version>
     </properties>
 
     <dependencies>
@@ -55,12 +57,17 @@
         <dependency>
             <groupId>org.openjfx</groupId>
             <artifactId>javafx-controls</artifactId>
-            <version>21.0.2</version>
+            <version>${javafx.version}</version>
         </dependency>
         <dependency>
             <groupId>org.openjfx</groupId>
             <artifactId>javafx-graphics</artifactId>
-            <version>21.0.2</version>
+            <version>${javafx.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-web</artifactId>
+            <version>${javafx.version}</version>
         </dependency>
     </dependencies>
 
@@ -74,6 +81,7 @@
                     <includes>
                         <include>**/*Test.java</include>
                     </includes>
+                    <argLine>--add-opens java.base/java.lang=ALL-UNNAMED</argLine>
                 </configuration>
             </plugin>
             <plugin>
@@ -81,10 +89,49 @@
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>3.11.0</version>
                 <configuration>
-                    <source>17</source>
-                    <target>17</target>
+                    <release>21</release>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.openjfx</groupId>
+                <artifactId>javafx-maven-plugin</artifactId>
+                <version>0.0.8</version>
+                <configuration>
+                    <!-- The plugin only puts modules named javafx.* on the module path, so javafx.web could
+                         not find org.openjfx:jdk-jsobject (JavaFX 24+). Run everything on the class path. -->
+                    <runtimePathOption>CLASSPATH</runtimePathOption>
+                    <mainClass>com.geotracker.TesseraLauncher</mainClass>
+                    <options>
+                        <option>--enable-native-access=ALL-UNNAMED</option>
+                    </options>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <version>3.3.0</version>
+                <configuration>
+                    <archive>
+                        <manifest>
+                            <mainClass>com.geotracker.TesseraLauncher</mainClass>
+                        </manifest>
+                    </archive>
                 </configuration>
             </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <!-- JDK 24+ no longer contains jdk.jsobject (needed by javafx.web / WebView).
+             JavaFX 24+ ships it as org.openjfx:jdk-jsobject, so use a current JavaFX there. -->
+        <profile>
+            <id>jfx-modern</id>
+            <activation>
+                <jdk>[24,)</jdk>
+            </activation>
+            <properties>
+                <javafx.version>25.0.2</javafx.version>
+            </properties>
+        </profile>
+    </profiles>
 </project>

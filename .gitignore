@@ -1,0 +1,23 @@
+target/
+*.class
+*.jar
+*.war
+*.ear
+.idea/
+*.iml
+.DS_Store
+*.log
+
+# JavaScript dependencies
+node_modules/
+
+# Local AI assistant configuration
+.claude/
+
+# Python generated files
+__pycache__/
+*.pyc
+
+# Local environment and secrets
+.env
+.env.*

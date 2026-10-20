@@ -11,16 +11,16 @@ public sealed interface QuadTreeNode {
         }
 
         public Leaf add(long vehicleId, double x, double y) {
-            if (size < vehicleIds.length) {
-                long[] newIds = java.util.Arrays.copyOf(vehicleIds, vehicleIds.length);
-                double[] newXs = java.util.Arrays.copyOf(xs, xs.length);
-                double[] newYs = java.util.Arrays.copyOf(ys, ys.length);
-                newIds[size] = vehicleId;
-                newXs[size] = x;
-                newYs[size] = y;
-                return new Leaf(bounds, newIds, newXs, newYs, size + 1);
-            }
-            throw new IllegalStateException("Leaf capacity exceeded");
+            // Leaves normally split at capacity, but a leaf at max depth (or one holding many vehicles at
+            // identical coordinates, e.g. parked on the same road node) must still accept the entry.
+            int capacity = size < vehicleIds.length ? vehicleIds.length : vehicleIds.length * 2;
+            long[] newIds = java.util.Arrays.copyOf(vehicleIds, capacity);
+            double[] newXs = java.util.Arrays.copyOf(xs, capacity);
+            double[] newYs = java.util.Arrays.copyOf(ys, capacity);
+            newIds[size] = vehicleId;
+            newXs[size] = x;
+            newYs[size] = y;
+            return new Leaf(bounds, newIds, newXs, newYs, size + 1);
         }
 
         public Leaf remove(long vehicleId, double x, double y) {

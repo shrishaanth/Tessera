@@ -70,29 +70,26 @@ public class CowQuadtree implements SpatialIndex {
         return nearest(root, x, y);
     }
 
+    /**
+     * Makes the working tree visible to readers. Nodes are never modified after construction (insert and
+     * remove copy the path they change), so the working root can be shared with readers as-is: later
+     * writes build new nodes and cannot affect the published snapshot.
+     */
     public synchronized void publish() {
-        publishedRoot = deepCopy(workingRoot);
+        publishedRoot = workingRoot;
+    }
+
+    /** Removes every entry from the working tree. Takes effect for readers at the next {@link #publish()}. */
+    public synchronized void clear() {
+        workingRoot = QuadTreeNode.Leaf.empty(workingRoot.bounds());
+    }
+
+    public BoundingBox bounds() {
+        return workingRoot.bounds();
     }
 
     public CowQuadtree snapshot() {
         return new CowQuadtree(publishedRoot);
-    }
-
-    private QuadTreeNode deepCopy(QuadTreeNode node) {
-        if (node instanceof QuadTreeNode.Leaf leaf) {
-            long[] ids = java.util.Arrays.copyOf(leaf.vehicleIds(), leaf.size());
-            double[] xs = java.util.Arrays.copyOf(leaf.xs(), leaf.size());
-            double[] ys = java.util.Arrays.copyOf(leaf.ys(), leaf.size());
-            return new QuadTreeNode.Leaf(leaf.bounds(), ids, xs, ys, leaf.size());
-        }
-        QuadTreeNode.Branch branch = (QuadTreeNode.Branch) node;
-        return new QuadTreeNode.Branch(
-            branch.bounds(),
-            deepCopy(branch.nw()),
-            deepCopy(branch.ne()),
-            deepCopy(branch.sw()),
-            deepCopy(branch.se())
-        );
     }
 
     private QuadTreeNode insert(QuadTreeNode node, long vehicleId, double x, double y, int depth) {

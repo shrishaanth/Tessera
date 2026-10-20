@@ -7,9 +7,11 @@ import java.util.*;
 
 public class AStarRouter {
     private final RoadGraph graph;
+    private final boolean useGeoDistance;
 
     public AStarRouter(RoadGraph graph) {
         this.graph = graph;
+        this.useGeoDistance = detectGeoCoordinates(graph);
     }
 
     public RouteResult findRoute(long vehicleId, Position startPos, double destX, double destY) {
@@ -38,27 +40,30 @@ public class AStarRouter {
         PriorityQueue<NodeEntry> openSet = new PriorityQueue<>(Comparator.comparingDouble(e -> e.fScore));
 
         gScore.put(startId, 0.0);
-        openSet.add(new NodeEntry(startId, heuristic(start, goal)));
+        openSet.add(new NodeEntry(startId, 0.0, heuristic(start, goal)));
 
         while (!openSet.isEmpty()) {
             NodeEntry current = openSet.poll();
             long currentId = current.id();
+            double currentG = current.gScore();
+
+            // Skip stale entries
+            if (currentG > gScore.getOrDefault(currentId, Double.POSITIVE_INFINITY)) continue;
 
             if (currentId == goalId) {
                 List<Long> path = reconstructPath(cameFrom, currentId);
-                double cost = gScore.get(goalId);
-                return new RouteResult(path, cost, vehicleId);
+                return new RouteResult(path, currentG, vehicleId);
             }
 
             for (RoadGraph.Edge edge : graph.getEdges(currentId)) {
                 long neighborId = edge.toId();
-                double tentativeG = gScore.get(currentId) + edge.weight();
+                double tentativeG = currentG + edge.weight();
                 if (tentativeG < gScore.getOrDefault(neighborId, Double.POSITIVE_INFINITY)) {
                     cameFrom.put(neighborId, currentId);
                     gScore.put(neighborId, tentativeG);
                     RoadGraph.Node neighbor = graph.getNode(neighborId);
                     double h = heuristic(neighbor, goal);
-                    openSet.add(new NodeEntry(neighborId, tentativeG + h));
+                    openSet.add(new NodeEntry(neighborId, tentativeG, tentativeG + h));
                 }
             }
         }
@@ -66,12 +71,17 @@ public class AStarRouter {
         return new RouteResult(List.of(), 0, vehicleId);
     }
 
-    private static boolean isLatLng(double x, double y) {
-        return x >= -180.0 && x <= 180.0 && y >= -90.0 && y <= 90.0;
+    private static boolean detectGeoCoordinates(RoadGraph graph) {
+        for (RoadGraph.Node node : graph.getAllNodes()) {
+            if (node.x() < -180 || node.x() > 180 || node.y() < -90 || node.y() > 90) {
+                return false;
+            }
+        }
+        return !graph.getAllNodes().isEmpty();
     }
 
     private double distance(RoadGraph.Node a, RoadGraph.Node b) {
-        if (isLatLng(a.x(), a.y()) && isLatLng(b.x(), b.y())) {
+        if (useGeoDistance) {
             return GeoUtils.haversineMeters(a.y(), a.x(), b.y(), b.x());
         }
         double dx = a.x() - b.x();
@@ -88,7 +98,7 @@ public class AStarRouter {
         double bestDist = Double.MAX_VALUE;
         for (RoadGraph.Node node : graph.getAllNodes()) {
             double d;
-            if (isLatLng(x, y) && isLatLng(node.x(), node.y())) {
+            if (useGeoDistance) {
                 d = GeoUtils.haversineMeters(y, x, node.y(), node.x());
             } else {
                 double dx = node.x() - x;
@@ -100,7 +110,8 @@ public class AStarRouter {
                 best = node;
             }
         }
-        if (bestDist > 100) return null;
+        double maxSnap = useGeoDistance ? 500.0 : 100.0;
+        if (bestDist > maxSnap) return null;
         return best;
     }
 
@@ -114,5 +125,5 @@ public class AStarRouter {
         return path;
     }
 
-    private record NodeEntry(long id, double fScore) {}
+    private record NodeEntry(long id, double gScore, double fScore) {}
 }

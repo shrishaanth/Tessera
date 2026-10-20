@@ -62,7 +62,11 @@ public class TrajectorySimulator {
     }
 
     public synchronized List<PositionUpdate> tick() {
-        simTime += dt * timeScale;
+        return tick(1.0);
+    }
+
+    public synchronized List<PositionUpdate> tick(double speedMultiplier) {
+        simTime += dt * timeScale * speedMultiplier;
         if (simTime * 1000.0 > Long.MAX_VALUE / 2) simTime = 0;
         long simMs = (long) (simTime * 1000.0);
         List<PositionUpdate> updates = new ArrayList<>();
